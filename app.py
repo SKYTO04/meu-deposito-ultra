@@ -64,14 +64,6 @@ def init_db():
         if not os.path.exists(arq):
             pd.DataFrame(columns=colunas).to_csv(arq, index=False)
 
-def gerar_backup_zip():
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        for f in TODOS_DBS:
-            if os.path.exists(f):
-                z.write(f)
-    return buf.getvalue()
-
 init_db()
 
 def registrar_log(user, acao):
@@ -186,69 +178,43 @@ else:
                         df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 1
                         df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Unid {item['Nome']}"); st.rerun()
 
-    # --- 🏗️ PILARES (VERSÃO PROFISSIONAL INTEGRADA) ---
+    # --- 🏗️ PILARES ---
     elif menu == "🏗️ Pilares (Amarração)":
         st.title("🏗️ Engenharia de Pilares")
-        
-        with st.expander("➕ MONTAR NOVA CAMADA (ESTRUTURA AMARRADA)"):
-            p_alvo = st.selectbox("Pilar Destino", ["+ Criar Novo"] + list(df_pil['NomePilar'].unique()))
-            n_pilar = st.text_input("Identificação do Pilar").upper() if p_alvo == "+ Criar Novo" else p_alvo
-            cat_filtro = st.selectbox("Filtrar Categoria para Montagem", df_p['Categoria'].unique())
-            
+        with st.expander("➕ MONTAR NOVA CAMADA", expanded=True):
+            pilares_existentes = sorted(df_pil['NomePilar'].unique().tolist())
+            col_sel1, col_sel2 = st.columns([1, 1])
+            p_opcao = col_sel1.selectbox("Escolha um pilar", ["+ CRIAR NOVO PILAR"] + pilares_existentes)
+            n_pilar = col_sel2.text_input("Nome do Pilar").upper().strip() if p_opcao == "+ CRIAR NOVO PILAR" else p_opcao
             if n_pilar:
+                cat_filtro = st.selectbox("Categoria", df_p['Categoria'].unique())
                 c_atual = 1 if df_pil[df_pil['NomePilar']==n_pilar].empty else df_pil[df_pil['NomePilar']==n_pilar]['Camada'].max() + 1
                 at, fr = (3, 2) if c_atual % 2 != 0 else (2, 3)
-                st.info(f"🏗️ **Camada {c_atual}** detectada. Padrão de amarração: **{at}x{fr}**")
-                
                 lista_beb = ["Vazio"] + df_p[df_p['Categoria'] == cat_filtro]['Nome'].tolist()
                 beb_dict, av_dict = {}, {}
-                
-                cols_grid = st.columns(max(at, fr))
+                cols_grid = st.columns(5)
                 for i in range(at + fr):
-                    pos = i + 1
-                    with cols_grid[i % len(cols_grid)]:
-                        st.markdown(f"**Posição {pos}**")
-                        beb_dict[pos] = st.selectbox(f"Bebida", lista_beb, key=f"p_{pos}", label_visibility="collapsed")
-                        av_dict[pos] = st.number_input(f"Avulsos", 0, key=f"a_{pos}")
-                
-                if st.button("FINALIZAR MONTAGEM E REGISTRAR", use_container_width=True):
-                    regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().second}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
-                    if regs:
-                        pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False)
-                        registrar_log(n_logado, f"Montou Camada {c_atual} no Pilar {n_pilar}")
-                        st.success("Estrutura integrada ao inventário!")
-                        st.rerun()
+                    with cols_grid[i]:
+                        beb_dict[i+1] = st.selectbox(f"Pos {i+1}", lista_beb, key=f"p_{i+1}")
+                        av_dict[i+1] = st.number_input(f"Unid", 0, key=f"a_{i+1}")
+                if st.button(f"CONSOLIDAR CAMADA {c_atual}"):
+                    regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().microsecond}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
+                    pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False); st.rerun()
 
-        st.markdown("---")
-        for pilar in df_pil['NomePilar'].unique():
-            with st.container():
-                st.markdown(f"### 📍 Localização: {pilar}")
-                camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
-                for cam in camadas:
-                    dados_cam = df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)]
-                    total_un_cam = 0
-                    st.markdown(f"**Camada {cam}**")
-                    cols = st.columns(5)
-                    for _, r in dados_cam.iterrows():
-                        u_padrao, _ = get_config_bebida(r['Bebida'], df_p)
-                        total_un_cam += (u_padrao + r['Avulsos'])
-                        with cols[int(r['Posicao'])-1]:
-                            card_html = f"""
-                            <div style="background-color:#1c2128; padding:10px; border-radius:12px; border:1px solid #30363d; text-align:center; min-height:95px; margin-bottom:5px;">
-                                <small style="color:#8b949e; font-size:0.7em;">POS {r['Posicao']}</small><br>
-                                <b style="font-size:0.85em; color:#e6edf3;">{r['Bebida']}</b><br>
-                                <span style="color:#238636; font-size:0.8em; font-weight:bold;">+{r['Avulsos']} UN</span>
-                            </div>
-                            """
-                            st.markdown(card_html, unsafe_allow_html=True)
-                            if st.button("BAIXA", key=f"out_{r['ID']}", use_container_width=True):
-                                df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_padrao + r['Avulsos'])
-                                df_e.to_csv(DB_EST, index=False)
-                                df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False)
-                                registrar_log(n_logado, f"Saída Pilar {pilar}: {r['Bebida']}")
-                                st.rerun()
-                    st.markdown(f"<p style='text-align:right; color:#8b949e; font-size:0.8em; margin-top:-10px;'>Subtotal Camada: {total_un_cam} un</p>", unsafe_allow_html=True)
-                    st.divider()
+        for pilar in sorted(df_pil['NomePilar'].unique()):
+            st.markdown(f"### 📍 {pilar}")
+            camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
+            for cam in camadas:
+                st.caption(f"Camada {cam}")
+                cols = st.columns(5)
+                for _, r in df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)].iterrows():
+                    with cols[int(r['Posicao'])-1]:
+                        st.write(f"**{r['Bebida']}** (+{r['Avulsos']})")
+                        if st.button("BAIXA", key=f"bx_p_{r['ID']}"):
+                            u_p, _ = get_config_bebida(r['Bebida'], df_p)
+                            df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_p + r['Avulsos'])
+                            df_e.to_csv(DB_EST, index=False); df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False); st.rerun()
+            st.divider()
 
     # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque Geral":
@@ -269,23 +235,14 @@ else:
     # --- ✨ CADASTRO ---
     elif menu == "✨ Cadastro":
         st.title("✨ Catálogo")
-        with st.expander("🆕 CADASTRAR PRODUTO"):
-            with st.form("f_cad"):
-                c1, c2, c3 = st.columns([2, 2, 1])
-                fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Alimentos", "Limpeza", "Outros"])
-                fn, fp = c2.text_input("Nome").upper().strip(), c3.number_input("Preço", 0.0)
-                if st.form_submit_button("CADASTRAR"):
-                    if fn and fn not in df_p['Nome'].values:
-                        pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
-                        pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
-        st.markdown("---")
-        st.subheader("🗑️ Remover do Catálogo")
-        p_del = st.selectbox("Selecione o produto para apagar", ["--"] + list(df_p['Nome'].unique()))
-        if p_del != "--":
-            if st.button(f"APAGAR {p_del}"):
-                df_p[df_p['Nome'] != p_del].to_csv(DB_PROD, index=False)
-                df_e[df_e['Nome'] != p_del].to_csv(DB_EST, index=False)
-                registrar_log(n_logado, f"Removeu {p_del}"); st.rerun()
+        with st.form("f_cad"):
+            c1, c2, c3 = st.columns([2, 2, 1])
+            fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Alimentos", "Limpeza", "Outros"])
+            fn, fp = c2.text_input("Nome").upper().strip(), c3.number_input("Preço", 0.0)
+            if st.form_submit_button("CADASTRAR"):
+                if fn and fn not in df_p['Nome'].values:
+                    pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
+                    pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
 
     # --- 🍶 CONTROLE DE CASCOS (V7.2 - FINAL) ---
     elif menu == "🍶 Controle de Cascos":
@@ -349,8 +306,10 @@ else:
                     is_empresa = "EMPRESA" in str(r['Cliente'])
                     emoji = "🚚" if is_empresa else "🟢"
                     h1.write(f"{emoji} **{r['Cliente']}**: {r['Vasilhame']} ({r['Quantidade']} un)")
+                    # Agora mostra data e hora completa no histórico
                     h2.caption(f"📅 {r['Data']} | Por: {r['QuemBaixou']}")
                     
+                    # Só aparece o botão de voltar se NÃO for empresa
                     if not is_empresa:
                         if h3.button("VOLTAR P/ LISTA ⏪", key=f"rev_{r['ID']}"):
                             df_cas.at[i, 'Status'] = "DEVE"
@@ -365,8 +324,24 @@ else:
         col_p1, col_p2 = st.columns([1, 2])
         with col_p1: st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636; height: 180px; object-fit: cover;'></div>", unsafe_allow_html=True)
         with col_p2:
-            st.info(f"**Nome:** {n_logado}\n\n**Usuário:** {u_logado}")
-            with st.expander("Atualizar Foto"):
-                upload = st.file_uploader("Escolha imagem", type=['png', 'jpg', 'jpeg'])
-                if st.button("SALVAR") and upload:
-                    img = Image.open(upload); img = img.convert("RGB"); img.thumbnail((300, 30
+            st.info(f"**Nome:** {n_logado}\n**Usuário:** {u_logado}")
+            upload = st.file_uploader("Trocar Foto", type=['png', 'jpg'])
+            if st.button("SALVAR FOTO") and upload:
+                img = Image.open(upload).convert("RGB"); img.thumbnail((300, 300))
+                buf = io.BytesIO(); img.save(buf, format="PNG"); img_b64 = base64.b64encode(buf.getvalue()).decode()
+                df_usr.loc[df_usr['user'] == u_logado, 'foto'] = img_b64; df_usr.to_csv(DB_USR, index=False); st.rerun()
+
+    # --- 👥 EQUIPE ---
+    elif menu == "👥 Equipe" and is_adm:
+        st.title("👥 Equipe")
+        with st.form("f_eq"):
+            u, n, s = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha", type="password")
+            a = st.selectbox("Admin", ["NÃO", "SIM"])
+            if st.form_submit_button("CADASTRAR"):
+                pd.concat([df_usr, pd.DataFrame([[u, n, s, a, "0", ""]], columns=df_usr.columns)]).to_csv(DB_USR, index=False); st.rerun()
+        st.dataframe(df_usr[['user', 'nome', 'is_admin']])
+
+    # --- 📜 LOGS ---
+    elif menu == "📜 Logs" and is_adm:
+        st.title("📜 Logs")
+        st.dataframe(pd.read_csv(DB_LOG).sort_index(ascending=False))
