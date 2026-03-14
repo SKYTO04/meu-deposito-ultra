@@ -110,8 +110,13 @@ if not st.session_state['autenticado']:
                 else: st.error("Acesso negado.")
 else:
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
-    df_p, df_e, df_pil = pd.read_csv(DB_PROD), pd.read_csv(DB_EST), pd.read_csv(DB_PIL)
-    df_cas, df_usr = pd.read_csv(DB_USR)
+    
+    # --- CORREÇÃO APLICADA AQUI ---
+    df_p = pd.read_csv(DB_PROD)
+    df_e = pd.read_csv(DB_EST)
+    df_pil = pd.read_csv(DB_PIL)
+    df_cas = pd.read_csv(DB_CAS)
+    df_usr = pd.read_csv(DB_USR)
 
     # --- SIDEBAR COM FOTO ---
     user_row = df_usr[df_usr['user'] == u_logado]
@@ -128,11 +133,10 @@ else:
     if st.sidebar.button("🚪 SAIR"):
         st.session_state['autenticado'] = False; st.rerun()
 
-    # --- 🏠 DASHBOARD (NOVA ABA PROFISSIONAL) ---
+    # --- 🏠 DASHBOARD ---
     if menu == "🏠 Dashboard":
         st.title("🚀 Central de Comando")
         
-        # Linha 1: Métricas de Impacto
         m1, m2, m3, m4 = st.columns(4)
         total_devedores = len(df_cas[df_cas['Status'] == "DEVE"])
         total_itens = len(df_p)
@@ -145,7 +149,6 @@ else:
         m4.metric("Baixo Estoque", f"{baixo_estoque} Alertas", delta="-2% vol")
 
         st.markdown("---")
-        
         col_left, col_right = st.columns([2, 1])
         
         with col_left:
@@ -169,7 +172,8 @@ else:
         for _, item in df_pdv.iterrows():
             with st.container():
                 c1, c2, c3 = st.columns([3, 3, 4])
-                est_u = int(df_e[df_e['Nome'] == item['Nome']]['Estoque_Total_Un'].values[0])
+                est_u_busca = df_e[df_e['Nome'] == item['Nome']]['Estoque_Total_Un'].values
+                est_u = int(est_u_busca[0]) if len(est_u_busca) > 0 else 0
                 u_b, t_t = get_config_bebida(item['Nome'], df_p)
                 c1.markdown(f"#### {item['Nome']}")
                 c2.metric("Saldo", f"{est_u//u_b} {t_t} | {est_u%u_b} un")
