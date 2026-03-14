@@ -62,7 +62,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- LOGO CENTRALIZADA ---
-URL_LOGO = "https://cdn-icons-png.flaticon.com/512/931/931949.png" 
+URL_LOGO = "logo.png" 
 st.markdown(f"""
     <div style="display: flex; justify-content: center; margin-bottom: 20px;">
         <img src="{URL_LOGO}" style="width: 80px; filter: drop-shadow(0px 4px 10px rgba(255,75,75,0.3));">
