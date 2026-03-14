@@ -48,10 +48,9 @@ def registrar_log(user, acao):
     data = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     pd.DataFrame([[data, user, acao]], columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, mode='a', header=False, index=False)
 
-# --- 4. SISTEMA DE LOGIN (VERSÃO ATUALIZADA) ---
+# --- 4. SISTEMA DE LOGIN ---
 df_users = pd.read_csv(USERS_FILE)
 credentials = {'usernames': {}}
-
 for _, r in df_users.iterrows():
     credentials['usernames'][str(r['user'])] = {
         'name': str(r['nome']),
@@ -59,14 +58,9 @@ for _, r in df_users.iterrows():
         'email': '' 
     }
 
-authenticator = stauth.Authenticate(
-    credentials,
-    'estoque_pacaembu_cookie',
-    'auth_pacaembu_key',
-    30
-)
+authenticator = stauth.Authenticate(credentials, 'estoque_pacaembu_cookie', 'auth_pacaembu_key', 30)
 
-# LOGO NO TOPO
+# CABEÇALHO
 URL_LOGO = "https://cdn-icons-png.flaticon.com/512/931/931949.png"
 st.markdown(f"""
     <div style="display: flex; flex-direction: column; align-items: center; margin-top: -30px; margin-bottom: 20px;">
@@ -75,31 +69,40 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# Chamada do login (estilo novo)
 authenticator.login(location='main')
 
-# Verificação do status
 if st.session_state["authentication_status"]:
     nome_logado = st.session_state["name"]
     user_id = st.session_state["username"]
-    
-    # Identificar Admin
     user_info = df_users[df_users['user'] == user_id].iloc[0]
     sou_admin = user_info['is_admin'] == 'SIM'
 
     st.sidebar.markdown(f"### 👤 {nome_logado}")
-    if sou_admin: st.sidebar.info("Acesso: ADMINISTRADOR")
-    
     menu_opcoes = ["🏗️ Mapa", "📦 Romarinho", "🔄 Vendas/Cargas", "🍶 Cascos"]
-    if sou_admin:
-        menu_opcoes += ["📜 Auditoria", "👥 Equipe", "📊 Financeiro", "⚙️ Configs"]
-    
+    if sou_admin: menu_opcoes += ["📜 Histórico (Adm)", "👥 Equipe", "📊 Financeiro", "⚙️ Configs"]
     menu = st.sidebar.radio("Navegação", menu_opcoes)
     authenticator.logout('Sair do Sistema', 'sidebar')
 
+    # --- ABA: HISTÓRICO DE MOVIMENTAÇÃO (SÓ ADMIN) ---
+    if menu == "📜 Histórico (Adm)" and sou_admin:
+        st.title("📜 Histórico Geral de Atividades")
+        st.markdown("Veja abaixo quem tirou ou adicionou produtos no estoque:")
+        
+        df_log = pd.read_csv(LOG_FILE)
+        if df_log.empty:
+            st.info("Nenhuma movimentação registrada ainda.")
+        else:
+            # Mostra do mais novo para o mais antigo
+            st.dataframe(df_log.iloc[::-1], use_container_width=True)
+            
+            if st.button("Limpar Histórico (Cuidado!)"):
+                pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, index=False)
+                st.success("Histórico limpo!")
+                st.rerun()
+
     # --- ABA: ROMARINHO ---
-    if menu == "📦 Romarinho":
-        st.title("📦 Romarinhos")
+    elif menu == "📦 Romarinho":
+        st.title("📦 Estoque de Romarinhos")
         df_estoque = pd.read_csv(DB_FILE)
         df_rom = df_estoque[df_estoque['Categoria'] == 'Romarinho']
         if df_rom.empty:
@@ -111,119 +114,110 @@ if st.session_state["authentication_status"]:
                     st.markdown(f"""
                     <div class="product-card">
                         <h3>{row['Bebida']}</h3>
-                        <p style="font-size: 20px;">Total: <b>{int(row['Qtd'])} un</b></p>
-                        <p style="color: #ff4b4b;">Engradados: <b>{int(row['Qtd']//12)}</b></p>
+                        <p style="font-size: 18px;">Total: <b>{int(row['Qtd'])} un</b></p>
+                        <p style="color: #ff4b4b; font-weight: bold;">Engradados (24un): {int(row['Qtd']//row['Fardo'])}</p>
                     </div>
                     """, unsafe_allow_html=True)
 
     # --- ABA: VENDAS/CARGAS ---
     elif menu == "🔄 Vendas/Cargas":
-        st.title("🔄 Operação")
+        st.title("🔄 Operação de Estoque")
         df_estoque = pd.read_csv(DB_FILE)
         if not df_estoque.empty:
             with st.form("form_mov"):
-                item = st.selectbox("Produto", df_estoque['Bebida'].unique())
-                op = st.radio("Ação", ["Venda", "Carga", "Quebra"], horizontal=True)
-                quantidade = st.number_input("Quantidade", min_value=1, step=1)
+                item = st.selectbox("Escolha o Produto", df_estoque['Bebida'].unique())
+                op = st.radio("O que deseja fazer?", ["Venda", "Carga (Entrada)", "Quebra/Perda"], horizontal=True)
+                quantidade = st.number_input("Quantidade em Unidades", min_value=1, step=1)
                 
-                if st.form_submit_button("Confirmar"):
+                if st.form_submit_button("Confirmar Movimentação"):
                     idx = df_estoque[df_estoque['Bebida'] == item].index
                     if op == "Venda":
                         if df_estoque.loc[idx, 'Qtd'].values[0] >= quantidade:
                             df_estoque.loc[idx, 'Qtd'] -= quantidade
-                            total = quantidade * df_estoque.loc[idx, 'Venda'].values[0]
-                            msg = f"""*CONVENIÊNCIA PACAEMBU* 🧾
---------------------------
-📦 *Item:* {item}
-🔢 *Qtd:* {quantidade}
-💵 *Total:* R$ {total:.2f}
---------------------------
-⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}"""
-                            st.session_state.link_zap = f"https://wa.me/?text={urllib.parse.quote(msg)}"
-                        else: st.error("Sem estoque!")
-                    elif op == "Carga":
+                            registrar_log(nome_logado, f"VENDA: Tirou {quantidade} un de {item}")
+                        else: st.error("Estoque insuficiente!")
+                    elif op == "Carga (Entrada)":
                         df_estoque.loc[idx, 'Qtd'] += quantidade
+                        registrar_log(nome_logado, f"CARGA: Adicionou {quantidade} un de {item}")
                     else:
                         df_estoque.loc[idx, 'Qtd'] -= quantidade
+                        registrar_log(nome_logado, f"QUEBRA: Removeu {quantidade} un de {item}")
                     
                     df_estoque.to_csv(DB_FILE, index=False)
-                    registrar_log(nome_logado, f"{op} de {quantidade} un de {item}")
-                    st.success("Atualizado!")
+                    st.success("Movimentação registrada!")
                     st.rerun()
-            
-            if 'link_zap' in st.session_state:
-                st.link_button("📤 Enviar WhatsApp", st.session_state.link_zap)
 
-    # --- ABA: CASCOS ---
+    # --- ABA: CASCOS (COM ESTORNO) ---
     elif menu == "🍶 Cascos":
-        st.title("🍶 Cascos")
+        st.title("🍶 Controle de Cascos")
         with st.form("f_casco"):
-            cli = st.text_input("Cliente")
-            q_casco = st.number_input("Qtd", min_value=1)
-            tel = st.text_input("Telefone")
-            if st.form_submit_button("Gravar"):
-                pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), cli, q_casco, tel, 'PENDENTE']], 
+            cli = st.text_input("Nome do Cliente")
+            q = st.number_input("Quantidade", min_value=1)
+            if st.form_submit_button("Registrar Empréstimo"):
+                pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), cli, q, "", 'PENDENTE']], 
                             columns=['Data', 'Nome', 'Quantidade', 'Telefone', 'Status']).to_csv(CASCOS_FILE, mode='a', header=False, index=False)
-                registrar_log(nome_logado, f"Casco: {cli}")
+                registrar_log(nome_logado, f"CASCO: Emprestou {q} para {cli}")
                 st.rerun()
 
         df_c = pd.read_csv(CASCOS_FILE)
+        st.subheader("🚩 Pendentes")
         for i, r in df_c[df_c['Status'] == 'PENDENTE'].iterrows():
             c1, c2 = st.columns([3, 1])
-            c1.warning(f"⚠️ {r['Nome']} ({int(r['Quantidade'])} un)")
-            if c2.button("Baixa", key=f"c_{i}"):
+            c1.warning(f"⚠️ {r['Nome']} deve {int(r['Quantidade'])} cascos")
+            if c2.button("Dar Baixa ✅", key=f"bx_{i}"):
                 df_c.at[i, 'Status'] = 'DEVOLVIDO'
                 df_c.to_csv(CASCOS_FILE, index=False)
+                registrar_log(nome_logado, f"CASCO: Baixa de {r['Nome']}")
                 st.rerun()
+
+        with st.expander("🕒 Corrigir Erros / Estornar"):
+            for i, r in df_c[df_c['Status'] == 'DEVOLVIDO'].iterrows():
+                if st.button(f"Estornar {r['Nome']}", key=f"est_{i}"):
+                    df_c.at[i, 'Status'] = 'PENDENTE'
+                    df_c.to_csv(CASCOS_FILE, index=False)
+                    registrar_log(nome_logado, f"ESTORNO: Voltou cobrança de {r['Nome']}")
+                    st.rerun()
 
     # --- ABA: CONFIGS ---
     elif menu == "⚙️ Configs" and sou_admin:
-        st.title("⚙️ Cadastro")
+        st.title("⚙️ Cadastrar Novo Produto")
         with st.form("cad"):
             cat = st.selectbox("Categoria", ["Romarinho", "Cerveja", "Refrigerante"])
-            nome = st.text_input("Bebida").upper()
-            custo = st.number_input("Custo", format="%.2f")
-            venda = st.number_input("Venda", format="%.2f")
-            fardo = st.number_input("Unidades/Fardo", value=12)
-            prat = st.text_input("Setor").upper()
+            nome = st.text_input("Nome do Produto").upper()
+            fardo = st.number_input("Unidades por Engradado/Fardo", value=24 if cat == "Romarinho" else 12)
+            custo = st.number_input("Custo Unitário", format="%.2f")
+            venda = st.number_input("Venda Unitária", format="%.2f")
             if st.form_submit_button("Salvar"):
                 df_e = pd.read_csv(DB_FILE)
-                novo = pd.DataFrame([[cat, prat, nome, 0, fardo, 1, 12, custo, venda]], columns=df_e.columns)
+                novo = pd.DataFrame([[cat, "GERAL", nome, 0, fardo, 1, 12, custo, venda]], columns=df_e.columns)
                 pd.concat([df_e, novo]).to_csv(DB_FILE, index=False)
-                st.success("Salvo!")
+                registrar_log(nome_logado, f"CADASTRO: Criou o produto {nome}")
+                st.success("Cadastrado!")
 
-    # --- ABA: FINANCEIRO ---
-    elif menu == "📊 Financeiro" and sou_admin:
-        st.title("📊 Dinheiro")
-        df_f = pd.read_csv(DB_FILE)
-        if not df_f.empty:
-            custo_t = (df_f['Qtd'] * df_f['Custo']).sum()
-            venda_t = (df_f['Qtd'] * df_f['Venda']).sum()
-            st.metric("📦 Custo Estoque", f"R$ {custo_t:,.2f}")
-            st.metric("📈 Retorno Previsto", f"R$ {venda_t:,.2f}")
-            st.metric("🍀 Lucro", f"R$ {(venda_t-custo_t):,.2f}")
-
-    # --- ABA: EQUIPE ---
-    elif menu == "👥 Equipe" and sou_admin:
-        st.title("👥 Funcionários")
-        with st.form("add"):
-            u_log = st.text_input("Login").lower()
-            u_nom = st.text_input("Nome")
-            u_sen = st.text_input("Senha")
-            u_adm = st.selectbox("Admin?", ["NÃO", "SIM"])
-            if st.form_submit_button("Criar"):
-                pd.DataFrame([[u_log, u_nom, u_sen, u_adm]], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, mode='a', header=False, index=False)
-                st.success("Criado!")
-
-    # --- ABA: MAPA ---
+    # --- DEMAIS ABAS ---
     elif menu == "🏗️ Mapa":
-        st.title("🏗️ Mapa")
+        st.title("🏗️ Mapa de Estoque")
         df_m = pd.read_csv(DB_FILE)
-        for p in df_m['Prateleira'].unique():
-            st.subheader(f"📍 {p}")
-            for _, r in df_m[df_m['Prateleira'] == p].iterrows():
-                with st.expander(f"{r['Bebida']} ({int(r['Qtd'])} un)"):
-                    st.text("📦 " * min(20, int(r['Qtd'] // r['Fardo'])))
+        for _, r in df_m.iterrows():
+            st.write(f"📍 {r['Bebida']}: {int(r['Qtd'])} unidades")
+
+    elif menu == "📊 Financeiro" and sou_admin:
+        st.title("📊 Resumo Financeiro")
+        df_f = pd.read_csv(DB_FILE)
+        st.metric("💰 Total em Custo", f"R$ {(df_f['Qtd'] * df_f['Custo']).sum():,.2f}")
+        st.metric("📈 Total em Venda", f"R$ {(df_f['Qtd'] * df_f['Venda']).sum():,.2f}")
+
+    elif menu == "👥 Equipe" and sou_admin:
+        st.title("👥 Gestão da Equipe")
+        with st.form("add"):
+            u = st.text_input("Login").lower()
+            n = st.text_input("Nome")
+            s = st.text_input("Senha")
+            a = st.selectbox("Admin?", ["NÃO", "SIM"])
+            if st.form_submit_button("Criar Usuário"):
+                pd.DataFrame([[u, n, s, a]], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, mode='a', header=False, index=False)
+                registrar_log(nome_logado, f"EQUIPE: Criou usuário {u}")
+                st.success("Criado!")
 
 elif st.session_state["authentication_status"] is False:
     st.error('Login ou Senha incorretos.')
