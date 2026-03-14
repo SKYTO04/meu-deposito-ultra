@@ -244,7 +244,7 @@ else:
                     pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
                     pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
 
-    # --- 🍶 CONTROLE DE CASCOS (V7.1 - ATUALIZADO) ---
+    # --- 🍶 CONTROLE DE CASCOS (V7.2 - FINAL) ---
     elif menu == "🍶 Controle de Cascos":
         st.title("🍶 Gestão de Vasilhames")
         tab_deve, tab_empresa, tab_vazio, tab_hist = st.tabs([
@@ -258,13 +258,19 @@ else:
                 va = c2.selectbox("Vasilhame", ["Romarinho", "Coca 1L", "Coca 2L", "600ml"])
                 qt = c3.number_input("Qtd", 1)
                 if st.form_submit_button("LANÇAR"):
-                    pd.concat([df_cas, pd.DataFrame([[f"C{datetime.now().microsecond}", datetime.now().strftime("%d/%m"), cl, "", va, qt, "DEVE", ""]], columns=df_cas.columns)]).to_csv(DB_CAS, index=False); st.rerun()
+                    data_hora = datetime.now().strftime("%d/%m %H:%M")
+                    pd.concat([df_cas, pd.DataFrame([[f"C{datetime.now().microsecond}", data_hora, cl, "", va, qt, "DEVE", ""]], columns=df_cas.columns)]).to_csv(DB_CAS, index=False)
+                    st.rerun()
             for i, r in df_cas[df_cas['Status'] == "DEVE"].iterrows():
                 with st.container():
                     col1, col2 = st.columns([5, 2])
                     col1.warning(f"📍 **{r['Cliente']}** deve **{r['Quantidade']}x {r['Vasilhame']}**")
                     if col2.button("RECEBI ✅", key=f"bx_{r['ID']}"):
-                        df_cas.at[i, 'Status'] = "PAGO"; df_cas.at[i, 'QuemBaixou'] = n_logado; df_cas.to_csv(DB_CAS, index=False); st.rerun()
+                        df_cas.at[i, 'Status'] = "PAGO"
+                        df_cas.at[i, 'Data'] = datetime.now().strftime("%d/%m %H:%M")
+                        df_cas.at[i, 'QuemBaixou'] = n_logado
+                        df_cas.to_csv(DB_CAS, index=False)
+                        st.rerun()
 
         with tab_empresa:
             st.subheader("🚚 Coleta de Vasilhames (Empresa)")
@@ -274,7 +280,9 @@ else:
                 tiv = e2.selectbox("Levado", ["Romarinho", "Coca 1L", "Coca 2L", "600ml"])
                 qtv = e3.number_input("Qtd Levada", 1)
                 if st.form_submit_button("REGISTRAR SAÍDA"):
-                    pd.concat([df_cas, pd.DataFrame([[f"OUT_{datetime.now().microsecond}", datetime.now().strftime("%d/%m"), f"EMPRESA: {emp}", "", tiv, -qtv, "PAGO", n_logado]], columns=df_cas.columns)]).to_csv(DB_CAS, index=False); st.rerun()
+                    data_hora = datetime.now().strftime("%d/%m %H:%M")
+                    pd.concat([df_cas, pd.DataFrame([[f"OUT_{datetime.now().microsecond}", data_hora, f"EMPRESA: {emp}", "", tiv, -qtv, "PAGO", n_logado]], columns=df_cas.columns)]).to_csv(DB_CAS, index=False)
+                    st.rerun()
 
         with tab_vazio:
             st.subheader("📦 Estoque de Cascos no Pátio")
@@ -285,22 +293,30 @@ else:
                 tipos = ["Romarinho", "Coca 1L", "Coca 2L"]
                 for i, t in enumerate(tipos):
                     val = res[res['Vasilhame'] == t]['Quantidade'].values
-                    [c_v1, c_v2, c_v3][i].metric(t, f"{val[0] if len(val)>0 else 0} un")
+                    qtd_metric = val[0] if len(val)>0 else 0
+                    [c_v1, c_v2, c_v3][i].metric(t, f"{qtd_metric} un")
                 st.table(res)
 
         with tab_hist:
-            st.subheader("📜 Movimentações")
+            st.subheader("📜 Histórico de Movimentações")
             df_pagos = df_cas[df_cas['Status'] == "PAGO"].sort_index(ascending=False)
             for i, r in df_pagos.iterrows():
                 with st.container():
                     h1, h2, h3 = st.columns([4, 2, 2])
-                    emoji = "🚚" if "EMPRESA" in str(r['Cliente']) else "🟢"
+                    is_empresa = "EMPRESA" in str(r['Cliente'])
+                    emoji = "🚚" if is_empresa else "🟢"
                     h1.write(f"{emoji} **{r['Cliente']}**: {r['Vasilhame']} ({r['Quantidade']} un)")
-                    h2.caption(f"Por: {r['QuemBaixou']}")
-                    if h3.button("VOLTAR P/ LISTA ⏪", key=f"rev_{r['ID']}"):
-                        if "EMPRESA" in str(r['Cliente']): df_cas = df_cas.drop(i)
-                        else: df_cas.at[i, 'Status'] = "DEVE"; df_cas.at[i, 'QuemBaixou'] = ""
-                        df_cas.to_csv(DB_CAS, index=False); st.rerun()
+                    # Agora mostra data e hora completa no histórico
+                    h2.caption(f"📅 {r['Data']} | Por: {r['QuemBaixou']}")
+                    
+                    # Só aparece o botão de voltar se NÃO for empresa
+                    if not is_empresa:
+                        if h3.button("VOLTAR P/ LISTA ⏪", key=f"rev_{r['ID']}"):
+                            df_cas.at[i, 'Status'] = "DEVE"
+                            df_cas.at[i, 'QuemBaixou'] = ""
+                            df_cas.to_csv(DB_CAS, index=False)
+                            registrar_log(n_logado, f"Estorno casco: {r['Cliente']}")
+                            st.rerun()
 
     # --- ⚙️ PERFIL ---
     elif menu == "⚙️ Perfil":
