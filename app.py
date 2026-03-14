@@ -39,7 +39,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. INFRAESTRUTURA DE DADOS (CSV)
+# 2. INFRAESTRUTURA DE DADOS
 # =================================================================
 DB_PROD, DB_EST, DB_PIL = "produtos_v66.csv", "estoque_v66.csv", "pilares_v66.csv"
 DB_USR, DB_LOG, DB_CAS = "usuarios_v66.csv", "historico_v66.csv", "cascos_v66.csv"
@@ -48,7 +48,6 @@ def init_db():
     if not os.path.exists(DB_USR):
         pd.DataFrame([['admin', 'Gerente Mestre', '123', 'SIM', '0000-0000', '']], 
                      columns=['user', 'nome', 'senha', 'is_admin', 'telefone', 'foto']).to_csv(DB_USR, index=False)
-    
     arquivos = {
         DB_PROD: ['Categoria', 'Nome', 'Preco_Unitario'],
         DB_EST: ['Nome', 'Estoque_Total_Un'],
@@ -72,6 +71,7 @@ def get_config_bebida(nome, df_p):
         cat = busca['Categoria'].values[0]
         if cat == "Romarinho": return 24, "Engradado"
         if cat == "Refrigerante": return 6, "Fardo"
+        if cat in ["Alimentos", "Limpeza"]: return 1, "Unidade"
     return 12, "Fardo"
 
 # =================================================================
@@ -91,11 +91,7 @@ if not st.session_state['autenticado']:
                 df_u = pd.read_csv(DB_USR)
                 valid = df_u[(df_u['user'] == u_in) & (df_u['senha'].astype(str) == s_in)]
                 if not valid.empty:
-                    st.session_state.update({
-                        'autenticado': True, 'u_l': u_in, 
-                        'u_n': valid['nome'].values[0], 
-                        'u_a': (valid['is_admin'].values[0] == 'SIM')
-                    })
+                    st.session_state.update({'autenticado': True, 'u_l': u_in, 'u_n': valid['nome'].values[0], 'u_a': (valid['is_admin'].values[0] == 'SIM')})
                     registrar_log(st.session_state['u_n'], "Login")
                     st.rerun()
                 else: st.error("Acesso negado.")
@@ -105,41 +101,31 @@ else:
     df_cas, df_usr = pd.read_csv(DB_CAS), pd.read_csv(DB_USR)
 
     # --- SIDEBAR ---
-    user_row = df_usr[df_usr['user'] == u_logado]
-    f_path = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-    if not user_row.empty:
-        raw = user_row['foto'].values[0]
-        if not pd.isna(raw) and raw != "": f_path = f"data:image/png;base64,{raw}"
-
-    st.sidebar.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='100' style='border-radius: 50%; border: 3px solid #238636;'></div>", unsafe_allow_html=True)
-    st.sidebar.markdown(f"<p style='text-align: center;'><b>{n_logado}</b></p>", unsafe_allow_html=True)
-    
-    menu = st.sidebar.radio("NAVEGAÇÃO", 
-        ["🍻 PDV Romarinho", "🏗️ Pilares (Amarração)", "📦 Estoque Geral", "✨ Cadastro", "🍶 Controle de Cascos", "⚙️ Perfil"] + 
-        (["📊 Admin Financeiro", "📜 Logs", "👥 Equipe"] if is_adm else []))
-
+    st.sidebar.markdown(f"<p style='text-align: center;'><b>💎 PACAEMBU G66</b><br>{n_logado}</p>", unsafe_allow_html=True)
+    menu = st.sidebar.radio("NAVEGAÇÃO", ["🍻 PDV Romarinho", "🏗️ Pilares (Amarração)", "📦 Estoque Geral", "✨ Cadastro", "🍶 Controle de Cascos", "⚙️ Perfil"] + (["📊 Admin Financeiro", "📜 Logs", "👥 Equipe"] if is_adm else []))
     if st.sidebar.button("🚪 SAIR"):
         st.session_state['autenticado'] = False; st.rerun()
 
     # --- 🍻 PDV ROMARINHO ---
     if menu == "🍻 PDV Romarinho":
-        st.title("🍻 PDV Rápido - Romarinhos")
-        df_roms = df_p[df_p['Categoria'] == "Romarinho"]
-        for _, item in df_roms.iterrows():
+        st.title("🍻 PDV Rápido")
+        df_pdv = df_p[df_p['Categoria'].isin(["Romarinho", "Refrigerante", "Cerveja Lata"])]
+        for _, item in df_pdv.iterrows():
             with st.container():
                 c1, c2, c3 = st.columns([3, 3, 4])
                 est_u = int(df_e[df_e['Nome'] == item['Nome']]['Estoque_Total_Un'].values[0])
+                u_b, t_t = get_config_bebida(item['Nome'], df_p)
                 c1.markdown(f"#### {item['Nome']}")
-                c2.metric("Saldo", f"{est_u//24} Eng | {est_u%24} un")
-                b_eng, b_uni = c3.columns(2)
-                if b_eng.button("➖ ENGRADADO", key=f"e_{item['Nome']}"):
-                    df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 24
-                    df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Eng {item['Nome']}"); st.rerun()
-                if b_uni.button("➖ UNIDADE", key=f"u_{item['Nome']}"):
+                c2.metric("Saldo", f"{est_u//u_b} {t_t} | {est_u%u_b} un")
+                b1, b2 = c3.columns(2)
+                if b1.button(f"➖ {t_t.upper()}", key=f"e_{item['Nome']}"):
+                    df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= u_b
+                    df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda {t_t} {item['Nome']}"); st.rerun()
+                if b2.button("➖ UNID.", key=f"u_{item['Nome']}"):
                     df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 1
-                    df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Un {item['Nome']}"); st.rerun()
+                    df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Unid {item['Nome']}"); st.rerun()
 
-    # --- 🏗️ PILARES (AMARRAÇÃO) ---
+    # --- 🏗️ PILARES ---
     elif menu == "🏗️ Pilares (Amarração)":
         st.title("🏗️ Gestão de Pilares")
         with st.expander("🆕 MONTAR NOVA CAMADA"):
@@ -155,7 +141,7 @@ else:
                 col_at, col_fr = st.columns(2)
                 for i in range(at + fr):
                     pos = i + 1; target = col_at if pos <= at else col_fr
-                    beb_dict[pos] = target.selectbox(f"Posição {pos}", lista_beb, key=f"p_{pos}")
+                    beb_dict[pos] = target.selectbox(f"Pos {pos}", lista_beb, key=f"p_{pos}")
                     av_dict[pos] = target.number_input(f"Avulsos {pos}", 0, key=f"a_{pos}")
                 if st.button("CONFIRMAR MONTAGEM"):
                     regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().second}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
@@ -172,38 +158,51 @@ else:
                         if st.button("SAÍDA", key=f"out_{r['ID']}"):
                             u_padrao, _ = get_config_bebida(r['Bebida'], df_p)
                             df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_padrao + r['Avulsos'])
-                            df_e.to_csv(DB_EST, index=False); df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False)
-                            registrar_log(n_logado, f"Saída Pilar {pilar}"); st.rerun()
+                            df_e.to_csv(DB_EST, index=False); df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False); st.rerun()
 
-    # --- 📦 ESTOQUE (ENTRADA E SAÍDA MANUAL) ---
+    # --- 📦 ESTOQUE (COM LÓGICA DE ALIMENTOS/LIMPEZA) ---
     elif menu == "📦 Estoque Geral":
         st.title("📦 Inventário e Ajustes")
         st.dataframe(df_e, use_container_width=True, hide_index=True)
         st.subheader("⚙️ Movimentação Manual")
         sel_est = st.selectbox("Produto", df_p['Nome'].unique())
+        
+        # Lógica de interface baseada na categoria
+        row_p = df_p[df_p['Nome'] == sel_est]
+        cat_p = row_p['Categoria'].values[0] if not row_p.empty else ""
         u_b, t_t = get_config_bebida(sel_est, df_p)
+
         col_m1, col_m2, col_m3 = st.columns(3)
         tipo_mov = col_m1.radio("Operação", ["➕ ENTRADA", "➖ SAÍDA"])
-        qtd_f = col_m2.number_input(f"Qtd {t_t}s", 0)
-        qtd_u = col_m3.number_input("Qtd Avulsas", 0)
-        if st.button("EXECUTAR"):
+        
+        # Se for Alimento ou Limpeza, removemos a opção de fardos/engradados
+        if cat_p in ["Alimentos", "Limpeza"]:
+            qtd_f = 0
+            qtd_u = col_m2.number_input("Quantidade (Unidades)", 0)
+            col_m3.info("Categoria de item unitário")
+        else:
+            qtd_f = col_m2.number_input(f"Qtd {t_t}s", 0)
+            qtd_u = col_m3.number_input("Qtd Avulsas", 0)
+        
+        if st.button("EXECUTAR MOVIMENTAÇÃO"):
             total_un = (qtd_f * u_b) + qtd_u
             if "SAÍDA" in tipo_mov: df_e.loc[df_e['Nome'] == sel_est, 'Estoque_Total_Un'] -= total_un
             else: df_e.loc[df_e['Nome'] == sel_est, 'Estoque_Total_Un'] += total_un
-            df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Ajuste {sel_est}"); st.rerun()
+            df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Ajuste {sel_est} ({total_un}un)"); st.rerun()
 
-    # --- ✨ CADASTRO (REMOVER) ---
+    # --- ✨ CADASTRO ---
     elif menu == "✨ Cadastro":
         st.title("✨ Gestão do Catálogo")
         with st.form("f_cad"):
             c1, c2, c3 = st.columns([2, 2, 1])
-            fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Outros"])
-            fn, fp = c2.text_input("Nome").upper(), c3.number_input("Preço", 0.0)
+            fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Alimentos", "Limpeza", "Outros"])
+            fn, fp = c2.text_input("Nome").upper(), c3.number_input("Preço Unitário", 0.0)
             if st.form_submit_button("CADASTRAR"):
-                pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
-                pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
+                if fn and fn not in df_p['Nome'].values:
+                    pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
+                    pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
         st.divider()
-        sel_rem = st.selectbox("Remover", df_p['Nome'].unique())
+        sel_rem = st.selectbox("Deletar Produto", df_p['Nome'].unique())
         if st.button("❌ EXCLUIR DEFINITIVAMENTE"):
             df_p[df_p['Nome'] != sel_rem].to_csv(DB_PROD, index=False)
             df_e[df_e['Nome'] != sel_rem].to_csv(DB_EST, index=False); st.rerun()
@@ -220,43 +219,17 @@ else:
             if st.button("BAIXA", key=f"bx_{r['ID']}"):
                 df_cas.at[i, 'Status'] = "PAGO"; df_cas.to_csv(DB_CAS, index=False); st.rerun()
 
+    # --- 📜 LOGS (LIMPEZA) ---
+    elif menu == "📜 Logs" and is_adm:
+        st.title("📜 Histórico")
+        st.dataframe(pd.read_csv(DB_LOG).sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
+        if st.button("🗑️ LIMPAR HISTÓRICO"):
+            pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, index=False); st.rerun()
+
     # --- 📊 ADMIN FINANCEIRO ---
     elif menu == "📊 Admin Financeiro" and is_adm:
         st.title("📊 Patrimônio")
         df_fin = pd.merge(df_e, df_p, on='Nome')
         df_fin['Subtotal'] = df_fin['Estoque_Total_Un'] * df_fin['Preco_Unitario']
-        st.metric("TOTAL EM ESTOQUE", f"R$ {df_fin['Subtotal'].sum():,.2f}")
+        st.metric("VALOR EM ESTOQUE", f"R$ {df_fin['Subtotal'].sum():,.2f}")
         st.dataframe(df_fin, use_container_width=True, hide_index=True)
-
-    # --- 📜 LOGS (COM LIMPEZA) ---
-    elif menu == "📜 Logs" and is_adm:
-        st.title("📜 Histórico do Sistema")
-        df_logs_view = pd.read_csv(DB_LOG).sort_values(by='Data', ascending=False)
-        st.dataframe(df_logs_view, use_container_width=True, hide_index=True)
-        
-        st.divider()
-        if st.button("🗑️ LIMPAR TODO O HISTÓRICO DE LOGS"):
-            pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, index=False)
-            registrar_log(n_logado, "LIMPEZA TOTAL DE HISTÓRICO")
-            st.success("Histórico apagado com sucesso!")
-            st.rerun()
-
-    # --- 👥 EQUIPE ---
-    elif menu == "👥 Equipe" and is_adm:
-        st.title("👥 Equipe")
-        with st.form("eq"):
-            u, n, s, a = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Adm", ["NÃO", "SIM"])
-            if st.form_submit_button("ADD"):
-                pd.concat([df_usr, pd.DataFrame([[u, n, s, a, "0", ""]], columns=df_usr.columns)]).to_csv(DB_USR, index=False); st.rerun()
-        for i, r in df_usr.iterrows():
-            st.write(f"**{r['nome']}** - {r['is_admin']}")
-
-    # --- ⚙️ PERFIL ---
-    elif menu == "⚙️ Perfil":
-        st.title("⚙️ Perfil")
-        upload = st.file_uploader("Trocar Foto", type=['png', 'jpg'])
-        if st.button("SALVAR") and upload:
-            img = Image.open(upload); img.thumbnail((200, 200))
-            buf = io.BytesIO(); img.save(buf, format="PNG")
-            df_usr.loc[df_usr['user'] == u_logado, 'foto'] = base64.b64encode(buf.getvalue()).decode()
-            df_usr.to_csv(DB_USR, index=False); st.rerun()
