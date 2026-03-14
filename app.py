@@ -5,6 +5,7 @@ import os
 import base64
 from PIL import Image
 import io
+import zipfile  # Biblioteca necessária para o backup
 
 # =================================================================
 # 1. DESIGN PREMIUM - DARK PRESTIGE V66 (TOTAL)
@@ -42,10 +43,11 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. INFRAESTRUTURA DE DADOS
+# 2. INFRAESTRUTURA DE DADOS E BACKUP
 # =================================================================
 DB_PROD, DB_EST, DB_PIL = "produtos_v66.csv", "estoque_v66.csv", "pilares_v66.csv"
 DB_USR, DB_LOG, DB_CAS = "usuarios_v66.csv", "historico_v66.csv", "cascos_v66.csv"
+TODOS_DBS = [DB_PROD, DB_EST, DB_PIL, DB_USR, DB_LOG, DB_CAS]
 
 def init_db():
     if not os.path.exists(DB_USR):
@@ -61,6 +63,14 @@ def init_db():
     for arq, colunas in arquivos.items():
         if not os.path.exists(arq):
             pd.DataFrame(columns=colunas).to_csv(arq, index=False)
+
+def gerar_backup_zip():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for f in TODOS_DBS:
+            if os.path.exists(f):
+                z.write(f)
+    return buf.getvalue()
 
 init_db()
 
@@ -318,16 +328,41 @@ else:
 
     # --- 📊 ADMIN / LOGS ---
     elif menu == "📊 Admin Financeiro" and is_adm:
-        st.title("📊 Patrimônio")
+        st.title("📊 Gestão Patrimonial e Segurança")
+        
+        # --- NOVO: SEÇÃO DE BACKUP ---
+        with st.expander("🛡️ BACKUP DE SEGURANÇA", expanded=True):
+            col_b1, col_b2 = st.columns([3, 1])
+            col_b1.write("Gere um arquivo compactado com todos os dados da adega (estoque, usuários, cascos e logs). Guarde este arquivo em um local seguro.")
+            
+            backup_zip = gerar_backup_zip()
+            data_str = datetime.now().strftime("%d_%m_%Y")
+            
+            col_b2.download_button(
+                label="📥 BAIXAR BACKUP",
+                data=backup_zip,
+                file_name=f"backup_adega_pacaembu_{data_str}.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+        
+        st.markdown("---")
+        
+        # Financeiro Atual
         df_fin = pd.merge(df_e, df_p, on='Nome')
         df_fin['Subtotal'] = df_fin['Estoque_Total_Un'] * df_fin['Preco_Unitario']
         st.metric("VALOR TOTAL EM ESTOQUE", f"R$ {df_fin['Subtotal'].sum():,.2f}")
         st.dataframe(df_fin, use_container_width=True, hide_index=True)
 
     elif menu == "📜 Logs" and is_adm:
-        st.title("📜 Histórico")
+        st.title("📜 Histórico de Operações")
         col_l1, col_l2 = st.columns([5, 1])
         with col_l2:
-            if st.button("🗑️ LIMPAR", use_container_width=True):
+            if st.button("🗑️ LIMPAR LOGS", use_container_width=True):
                 pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, index=False); st.rerun()
-        st.dataframe(pd.read_csv(DB_LOG).sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
+        
+        df_log_carregado = pd.read_csv(DB_LOG)
+        if not df_log_carregado.empty:
+            st.dataframe(df_log_carregado.sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum registro encontrado.")
