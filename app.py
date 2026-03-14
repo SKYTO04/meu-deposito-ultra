@@ -5,11 +5,11 @@ import os
 import plotly.express as px
 
 # =================================================================
-# 1. SETUP DE INTERFACE (DARK PRESTIGE)
+# 1. SETUP DE INTERFACE
 # =================================================================
 st.set_page_config(page_title="PACAEMBU G86 - OMNI PRESTIGE", page_icon="🏦", layout="wide")
 
-for key, val in {'auth': False, 'nome': '', 'foto': '', 'user': '', 'role': 'OPERADOR'}.items():
+for key, val in {'auth': False, 'nome': '', 'role': 'OPERADOR'}.items():
     if key not in st.session_state: st.session_state[key] = val
 
 st.markdown("""
@@ -69,9 +69,9 @@ if not st.session_state['auth']:
                 df_u = pd.read_csv(DB['usr'])
                 res = df_u[(df_u['user'] == u) & (df_u['senha'].astype(str) == s)]
                 if not res.empty:
-                    st.session_state.update({'auth': True, 'nome': res['nome'].values[0], 'user': u, 'role': res['cargo'].values[0]})
+                    st.session_state.update({'auth': True, 'nome': res['nome'].values[0], 'role': res['cargo'].values[0]})
                     st.rerun()
-                else: st.error("Erro de Acesso")
+                else: st.error("Acesso Negado.")
 else:
     df_p, df_e, df_pi = pd.read_csv(DB['prod']), pd.read_csv(DB['est']), pd.read_csv(DB['pi'])
     df_v, df_log = pd.read_csv(DB['vendas']), pd.read_csv(DB['log_cad'])
@@ -80,79 +80,77 @@ else:
         st.markdown(f"### {st.session_state['nome']}\n`{st.session_state['role']}`")
         menu = st.radio("NAVEGAÇÃO", ["📊 DASHBOARD", "📦 ESTOQUE DINÂMICO", "🍻 PDV RÁPIDO", "🏗️ MAPA PILARES", "🕒 HISTÓRICO BRUTO", "⚙️ CONFIGS & CADASTROS"])
         if st.button("LOGOUT"):
-            st.session_state['auth'] = False
+            st.session_state.auth = False
             st.rerun()
 
     # =================================================================
-    # MAPA PILARES (COM CADASTRO MÚLTIPLO E FILTRO)
+    # MAPA PILARES (DINÂMICO E ILIMITADO)
     # =================================================================
     if menu == "🏗️ MAPA PILARES":
-        st.title("🏗️ Organização Física")
-
-        # Filtro de exibição (Só Refrigerante e Outros)
-        df_pi_cat = pd.merge(df_pi, df_p[['Nome', 'Categoria']], left_on='Bebida', right_on='Nome', how='left')
-        df_pi_filtrado = df_pi_cat[df_pi_cat['Categoria'].isin(["Refrigerante", "Outros"])]
+        st.title("🏗️ Organização Física de Pilares")
 
         if st.session_state['role'] == "ADMIN":
-            with st.expander("➕ CADASTRAR/MONTAR PILARES EM LOTE"):
-                with st.form("lote_pilar"):
-                    col_p, col_c = st.columns(2)
-                    pilar_alvo = col_p.selectbox("Selecione o Pilar", ["Pilar A", "Pilar B", "Pilar C", "Pilar D", "Pilar E"])
-                    camada_alvo = col_c.number_input("Nível/Camada", 1)
+            with st.expander("🆕 CRIAR OU ADICIONAR A UM PILAR"):
+                with st.form("pilar_livre"):
+                    c1, c2 = st.columns(2)
+                    # AQUI: Em vez de selectbox fixa, você digita o nome do pilar
+                    pilar_nome = c1.text_input("Nome do Pilar (Ex: COCA, BRAHMA, SKOL)").upper()
+                    camada_n = c2.number_input("Nível/Camada", 1)
                     
                     st.markdown("---")
                     cols = st.columns(5)
-                    novos_itens = []
+                    novas_pos = []
                     for i in range(1, 6):
                         with cols[i-1]:
                             st.write(f"Posição {i}")
-                            beb = st.selectbox(f"Item {i}", ["Vazio"] + df_p['Nome'].tolist(), key=f"b_{i}")
+                            beb = st.selectbox(f"Item {i}", ["Vazio"] + df_p['Nome'].tolist(), key=f"v_{i}")
                             avul = st.number_input(f"Avulso {i}", 0, key=f"a_{i}")
-                            if beb != "Vazio":
-                                novos_itens.append([f"PI{datetime.now().microsecond}{i}", pilar_alvo, camada_alvo, i, beb, avul])
+                            if beb != "Vazio" and pilar_nome != "":
+                                novas_pos.append([f"PI{datetime.now().microsecond}{i}", pilar_nome, camada_n, i, beb, avul])
                     
-                    if st.form_submit_button("SALVAR CONFIGURAÇÃO DO PILAR"):
-                        if novos_itens:
-                            df_new = pd.DataFrame(novos_itens, columns=df_pi.columns)
-                            pd.concat([df_pi, df_new]).to_csv(DB['pi'], index=False)
-                            st.success("Pilar configurado!")
+                    if st.form_submit_button("SALVAR CONFIGURAÇÃO"):
+                        if novas_pos:
+                            pd.concat([df_pi, pd.DataFrame(novas_pos, columns=df_pi.columns)]).to_csv(DB['pi'], index=False)
+                            st.success(f"Pilar {pilar_nome} atualizado!")
                             st.rerun()
 
-        # Visualização dos Pilares (Aparece a opção de todos, mas o conteúdo é filtrado)
-        pilar_view = st.selectbox("Visualizar Pilar:", ["Pilar A", "Pilar B", "Pilar C", "Pilar D", "Pilar E"])
-        camadas = sorted(df_pi_filtrado[df_pi_filtrado['Pilar'] == pilar_view]['Camada'].unique(), reverse=True)
-
-        if not camadas:
-            st.warning("Nenhum Refrigerante ou item 'Outros' neste pilar.")
-        
-        for c in camadas:
-            st.markdown(f"### Camada {c}")
-            v_cols = st.columns(5)
-            itens_c = df_pi_filtrado[(df_pi_filtrado['Pilar'] == pilar_view) & (df_pi_filtrado['Camada'] == c)]
-            for _, r in itens_c.iterrows():
-                with v_cols[int(r['Pos'])-1]:
-                    st.markdown(f"**{r['Bebida']}**")
-                    st.caption(f"Categoria: {r['Categoria']}")
-                    if st.button("BAIXA", key=f"bx_{r['ID']}"):
-                        fator_b = 6 if r['Categoria'] == "Refrigerante" else 1
-                        total_b = fator_b + int(r['Avulsos'])
-                        df_e.loc[df_e['Nome'] == r['Bebida'], 'Qtd_Unidades'] -= total_b
-                        df_e.to_csv(DB['est'], index=False)
-                        # Remove do banco real
-                        df_pi[df_pi['ID'] != r['ID']].to_csv(DB['pi'], index=False)
-                        st.rerun()
+        # Seleção de Pilar baseada no que existe no banco
+        pilares_existentes = sorted(df_pi['Pilar'].unique())
+        if pilares_existentes:
+            p_view = st.selectbox("Escolha o Pilar para Ver:", pilares_existentes)
+            
+            # Filtro de categorias (Refri e Outros)
+            df_pi_cat = pd.merge(df_pi, df_p[['Nome', 'Categoria']], left_on='Bebida', right_on='Nome', how='left')
+            df_render = df_pi_cat[(df_pi_cat['Pilar'] == p_view) & (df_pi_cat['Categoria'].isin(["Refrigerante", "Outros"]))]
+            
+            camadas = sorted(df_render['Camada'].unique(), reverse=True)
+            for c in camadas:
+                st.markdown(f"### Camada {c}")
+                v_cols = st.columns(5)
+                itens_c = df_render[df_render['Camada'] == c]
+                for _, r in itens_c.iterrows():
+                    with v_cols[int(r['Pos'])-1]:
+                        st.markdown(f"**{r['Bebida']}**")
+                        if st.button("DAR BAIXA", key=f"bx_{r['ID']}"):
+                            fator_b = 6 if r['Categoria'] == "Refrigerante" else 1
+                            total_b = fator_b + int(r['Avulsos'])
+                            df_e.loc[df_e['Nome'] == r['Bebida'], 'Qtd_Unidades'] -= total_b
+                            df_e.to_csv(DB['est'], index=False)
+                            df_pi[df_pi['ID'] != r['ID']].to_csv(DB['pi'], index=False)
+                            st.rerun()
+        else:
+            st.info("Nenhum pilar criado ainda. Use o menu acima.")
 
     # =================================================================
-    # DEMAIS MÓDULOS (ESTOQUE, PDV, CONFIGS)
+    # OUTROS MÓDULOS (ESTOQUE, PDV, CONFIGS)
     # =================================================================
     elif menu == "📦 ESTOQUE DINÂMICO":
         st.title("📦 Entrada de Mercadoria")
         p_sel = st.selectbox("Produto", df_p['Nome'].tolist())
         cat = df_p[df_p['Nome'] == p_sel]['Categoria'].values[0]
-        fator = 24 if cat in ["Romarinho", "Litrinho", "Long Neck"] else 12 if cat == "Cerveja Lata" else 6 if cat == "Refrigerante" else 1
+        fator = 24 if "Lata" not in cat and "Refrigerante" not in cat and "Outros" not in cat else 12 if "Lata" in cat else 6 if cat == "Refrigerante" else 1
         with st.form("ent"):
-            c1, c2 = st.columns(2)
-            f, a = c1.number_input("Qtd Fardos/Engradados", 0), c2.number_input("Avulsos", 0)
+            f, a = st.number_input("Qtd Fardos/Cargas", 0), st.number_input("Avulsos", 0)
             if st.form_submit_button("REGISTRAR"):
                 total = (f * fator) + a
                 df_e.loc[df_e['Nome'] == p_sel, 'Qtd_Unidades'] += total
@@ -160,25 +158,22 @@ else:
                 st.rerun()
 
     elif menu == "🍻 PDV RÁPIDO":
-        st.title("🍻 Venda Expressa")
+        st.title("🍻 Venda")
         for _, r in df_p.iterrows():
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"### {r['Nome']}")
             if c3.button("VENDER", key=f"v_{r['Nome']}"):
                 df_e.loc[df_e['Nome'] == r['Nome'], 'Qtd_Unidades'] -= 1
                 df_e.to_csv(DB['est'], index=False)
-                pd.DataFrame([[f"V{datetime.now().microsecond}", datetime.now().strftime("%d/%m"), datetime.now().strftime("%H:%M"), r['Nome'], 1, r['Preco_Custo'], r['Preco_Venda'], st.session_state['nome']]]).to_csv(DB['vendas'], mode='a', header=False, index=False)
                 st.rerun()
 
     elif menu == "⚙️ CONFIGS & CADASTROS":
-        st.title("⚙️ Configurações")
-        t1, t2 = st.tabs(["Produtos", "Histórico"])
-        with t1:
-            with st.form("cad_p"):
-                n = st.text_input("Nome").upper()
-                c = st.selectbox("Categoria", ["Romarinho", "Litrinho", "Long Neck", "Cerveja Lata", "Refrigerante", "Outros"])
-                pc, pv = st.number_input("Custo"), st.number_input("Venda")
-                if st.form_submit_button("SALVAR"):
-                    pd.concat([df_p, pd.DataFrame([[c, n, pc, pv, 24]], columns=df_p.columns)]).to_csv(DB['prod'], index=False)
-                    pd.concat([df_e, pd.DataFrame([[n, 0, "-"]], columns=df_e.columns)]).to_csv(DB['est'], index=False)
-                    st.rerun()
+        st.title("⚙️ Cadastros")
+        with st.form("cad"):
+            n = st.text_input("Nome").upper()
+            c = st.selectbox("Categoria", ["Romarinho", "Litrinho", "Long Neck", "Cerveja Lata", "Refrigerante", "Outros"])
+            pc, pv = st.number_input("Custo"), st.number_input("Venda")
+            if st.form_submit_button("SALVAR"):
+                pd.concat([df_p, pd.DataFrame([[c, n, pc, pv, 24]], columns=df_p.columns)]).to_csv(DB['prod'], index=False)
+                pd.concat([df_e, pd.DataFrame([[n, 0, "-"]], columns=df_e.columns)]).to_csv(DB['est'], index=False)
+                st.rerun()
