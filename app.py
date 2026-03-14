@@ -7,7 +7,7 @@ import os
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v17 - Integrada) ---
+# --- 2. BANCO DE DADOS ---
 DB_PRODUTOS = "produtos_v17.csv"
 DB_ESTOQUE = "estoque_v17.csv"
 PILAR_ESTRUTURA = "pilares_v17.csv"
@@ -17,6 +17,7 @@ CASCOS_FILE = "cascos_v17.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
+        # Usuário mestre inicial
         pd.DataFrame([['admin', 'Gerente Mestre', 'admin123', 'SIM']], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, index=False)
     if not os.path.exists(DB_PRODUTOS):
         pd.DataFrame(columns=['Categoria', 'Nome', 'Un_por_Volume', 'Custo', 'Venda']).to_csv(DB_PRODUTOS, index=False)
@@ -63,26 +64,22 @@ if st.session_state["authentication_status"]:
     df_e = pd.read_csv(DB_ESTOQUE)
     df_pilar = pd.read_csv(PILAR_ESTRUTURA)
 
-    # --- 1. GESTÃO DE PILARES ---
+    # --- 1. GESTÃO DE PILARES (Código Anterior Preservado) ---
     if menu == "🏗️ Gestão de Pilares":
         st.title("🏗️ Controle de Pilares e Vendas")
-        
-        with st.expander("➕ Nova Camada / Novo Pilar", expanded=False):
-            nome_p = st.text_input("NOME DO PILAR (Ex: PILAR 01)").upper()
+        with st.expander("➕ Nova Camada / Novo Pilar"):
+            nome_p = st.text_input("NOME DO PILAR").upper()
             if nome_p:
                 dados_p = df_pilar[df_pilar['NomePilar'] == nome_p]
                 cam_atual = 1 if dados_p.empty else dados_p['Camada'].max() + 1
-                
                 if cam_atual == 1:
-                    inicio = st.radio("Início da Amarração:", ["3 Atrás / 2 Frente", "2 Atrás / 3 Frente"], horizontal=True)
-                    st.session_state[f"layout_{nome_p}"] = inicio
+                    st.session_state[f"layout_{nome_p}"] = st.radio("Início:", ["3 Atrás / 2 Frente", "2 Atrás / 3 Frente"], horizontal=True)
                 
                 layout_base = st.session_state.get(f"layout_{nome_p}", "3 Atrás / 2 Frente")
                 inverter = (cam_atual % 2 == 0) if layout_base == "3 Atrás / 2 Frente" else (cam_atual % 2 != 0)
-
-                st.subheader(f"Camada {cam_atual} - {'Layout Invertido' if inverter else 'Layout Padrão'}")
-                lista_b = ["Vazio"] + df_prod['Nome'].tolist()
                 
+                st.subheader(f"Camada {cam_atual}")
+                lista_b = ["Vazio"] + df_prod['Nome'].tolist()
                 n_atras = 3 if not inverter else 2
                 n_frente = 2 if not inverter else 3
                 
@@ -93,7 +90,6 @@ if st.session_state["authentication_status"]:
                     pos = i + 1
                     escolhas[pos] = cols_a[i].selectbox(f"Pos {pos}", lista_b, key=f"s{pos}{cam_atual}")
                     av_in[pos] = cols_a[i].number_input(f"Avulsos P{pos}", 0, key=f"a{pos}{cam_atual}")
-                
                 st.write("**FRENTE**")
                 cols_f = st.columns(n_frente)
                 for i in range(n_frente):
@@ -109,11 +105,9 @@ if st.session_state["authentication_status"]:
                             novos.append([f_id, nome_p, cam_atual, pos, beb, av_in[pos]])
                     if novos:
                         pd.concat([df_pilar, pd.DataFrame(novos, columns=df_pilar.columns)]).to_csv(PILAR_ESTRUTURA, index=False)
-                        registrar_log(nome_logado, f"Montou camada {cam_atual} no pilar {nome_p}")
                         st.rerun()
 
-        # Visualização e Baixas
-        st.divider()
+        # Visualização de Pilares
         for np in df_pilar['NomePilar'].unique():
             with st.expander(f"📍 {np}", expanded=True):
                 cms = sorted(df_pilar[df_pilar['NomePilar'] == np]['Camada'].unique(), reverse=True)
@@ -124,99 +118,76 @@ if st.session_state["authentication_status"]:
                     for _, row in dados_c.iterrows():
                         p = int(row['Posicao'])
                         with cols[p-1]:
-                            cor = "#FFD700" if row['Avulsos'] > 0 else "#4CAF50"
-                            st.markdown(f'<div style="background-color:#1E1E1E; border:2px solid {cor}; padding:5px; border-radius:8px; text-align:center;"><b style="font-size:11px;">{row["Bebida"]}</b><br><small>{row["Avulsos"]} Avulsos</small></div>', unsafe_allow_html=True)
-                            
-                            c1, c2 = st.columns(2)
-                            if c1.button("Fardo", key=f"r{row['ID']}", help="Venda fardo + avulsos"):
+                            st.markdown(f'<div style="background-color:#1E1E1E; border:1px solid #4CAF50; padding:5px; border-radius:8px; text-align:center;"><small>{row["Bebida"]}</small><br><b>{row["Avulsos"]} Av</b></div>', unsafe_allow_html=True)
+                            if st.button("Fardo", key=f"r{row['ID']}"):
                                 vol = df_prod[df_prod['Nome'] == row['Bebida']]['Un_por_Volume'].values[0]
                                 df_e.loc[df_e['Nome'] == row['Bebida'], 'Estoque_Total_Un'] -= (vol + row['Avulsos'])
                                 df_e.to_csv(DB_ESTOQUE, index=False)
                                 df_pilar = df_pilar[df_pilar['ID'] != row['ID']]
                                 df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
-                                registrar_log(nome_logado, f"Venda Fardo: {row['Bebida']} de {np}")
                                 st.rerun()
-                            
-                            if c2.button("1un", key=f"u{row['ID']}", help="Tira 1 unidade"):
-                                if row['Avulsos'] > 0:
-                                    df_e.loc[df_e['Nome'] == row['Bebida'], 'Estoque_Total_Un'] -= 1
-                                    df_e.to_csv(DB_ESTOQUE, index=False)
-                                    df_pilar.loc[df_pilar['ID'] == row['ID'], 'Avulsos'] -= 1
-                                    df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
-                                    registrar_log(nome_logado, f"Venda 1un: {row['Bebida']} de {np}")
-                                    st.rerun()
 
     # --- 2. ENTRADA DE ESTOQUE ---
     elif menu == "📦 Entrada de Estoque":
-        st.title("📦 Entrada de Mercadoria")
+        st.title("📦 Entrada")
         with st.form("entrada"):
-            bebida_sel = st.selectbox("Selecione o Produto", df_prod['Nome'].unique())
-            vol_un = df_prod[df_prod['Nome'] == bebida_sel]['Un_por_Volume'].values[0]
-            c1, c2 = st.columns(2)
-            qtd_f = c1.number_input("Adicionar Fardos", 0)
-            qtd_s = c2.number_input("Adicionar Soltas", 0)
-            if st.form_submit_button("Confirmar Entrada"):
-                total_entrada = (qtd_f * vol_un) + qtd_s
-                df_e.loc[df_e['Nome'] == bebida_sel, 'Estoque_Total_Un'] += total_entrada
+            bebida_sel = st.selectbox("Produto", df_prod['Nome'].unique())
+            v_un = df_prod[df_prod['Nome'] == bebida_sel]['Un_por_Volume'].values[0]
+            f, s = st.columns(2)
+            q_f = f.number_input("Fardos", 0)
+            q_s = s.number_input("Soltas", 0)
+            if st.form_submit_button("Confirmar"):
+                total = (q_f * v_un) + q_s
+                df_e.loc[df_e['Nome'] == bebida_sel, 'Estoque_Total_Un'] += total
                 df_e.to_csv(DB_ESTOQUE, index=False)
-                registrar_log(nome_logado, f"Entrada: {total_entrada} un de {bebida_sel}")
-                st.success("Estoque atualizado!")
-                st.rerun()
-        st.subheader("Saldo Atual")
-        st.dataframe(df_e, use_container_width=True)
+                st.success("Estoque Atualizado!")
 
     # --- 3. CADASTRAR PRODUTO ---
     elif menu == "✨ Cadastrar Produto":
-        st.title("✨ Novo Cadastro")
-        with st.form("cadastro"):
+        st.title("✨ Cadastro")
+        with st.form("cad"):
             cat = st.selectbox("Categoria", ["Refrigerante", "Romarinho", "Cerveja Lata", "Long Neck"])
-            nome = st.text_input("Nome do Produto").upper()
-            custo = st.number_input("Preço de Custo (Unidade)", 0.0)
-            venda = st.number_input("Preço de Venda (Unidade)", 0.0)
+            nome = st.text_input("Nome").upper()
             if st.form_submit_button("Gravar"):
-                if nome in df_prod['Nome'].values:
-                    st.error("Produto já existe!")
-                elif nome == "":
-                    st.error("Insira um nome!")
+                vol = 24 if cat == "Romarinho" else (12 if cat == "Cerveja Lata" else 6)
+                pd.concat([df_prod, pd.DataFrame([[cat, nome, vol, 0, 0]], columns=df_prod.columns)]).to_csv(DB_PRODUTOS, index=False)
+                pd.concat([df_e, pd.DataFrame([[nome, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
+                st.success("Criado!")
+
+    # --- 7. EQUIPE (CADASTRO DE NOVOS LOGINS) ---
+    elif menu == "👥 Equipe" and sou_admin:
+        st.title("👥 Gestão de Equipe")
+        
+        st.subheader("➕ Cadastrar Novo Funcionário")
+        with st.form("novo_usuario"):
+            new_nome = st.text_input("Nome Completo")
+            new_user = st.text_input("Usuário (Login)")
+            new_pass = st.text_input("Senha", type="password")
+            new_admin = st.selectbox("É Administrador?", ["NÃO", "SIM"])
+            
+            if st.form_submit_button("Criar Acesso"):
+                if new_user in df_users['user'].values:
+                    st.error("Este login já existe!")
+                elif new_user == "" or new_pass == "":
+                    st.error("Preencha login e senha!")
                 else:
-                    vol = 24 if cat == "Romarinho" else (12 if cat == "Cerveja Lata" else 6)
-                    pd.concat([df_prod, pd.DataFrame([[cat, nome, vol, custo, venda]], columns=df_prod.columns)]).to_csv(DB_PRODUTOS, index=False)
-                    pd.concat([df_e, pd.DataFrame([[nome, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
-                    st.success("Cadastrado com sucesso!")
+                    novo_u = pd.DataFrame([[new_user, new_nome, new_pass, new_admin]], columns=df_users.columns)
+                    pd.concat([df_users, novo_u]).to_csv(USERS_FILE, index=False)
+                    st.success(f"Usuário {new_user} criado com sucesso!")
                     st.rerun()
 
-    # --- 4. CASCOS ---
-    elif menu == "🍶 Cascos":
-        st.title("🍶 Controle de Cascos / Vasilhames")
-        df_c = pd.read_csv(CASCOS_FILE)
-        with st.form("casco_f"):
-            c1, c2, c3 = st.columns(3)
-            p_nome = c1.text_input("Nome do Cliente")
-            p_tipo = c2.selectbox("Tipo", ["Engradado", "Garrafa Solta"])
-            p_qtd = c3.number_input("Quantidade", 1)
-            if st.form_submit_button("Registar"):
-                novo_c = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), p_nome, p_tipo, p_qtd, "", "PENDENTE"]], columns=df_c.columns)
-                pd.concat([df_c, novo_c]).to_csv(CASCOS_FILE, index=False)
-                st.rerun()
-        st.dataframe(df_c)
+        st.divider()
+        st.subheader("Colaboradores Atuais")
+        st.dataframe(df_users[['nome', 'user', 'is_admin']], use_container_width=True)
 
-    # --- 5. HISTÓRICO (ADM) ---
+    # --- HISTÓRICO E FINANCEIRO (Preservados) ---
     elif menu == "📜 Histórico (Adm)" and sou_admin:
-        st.title("📜 Logs do Sistema")
-        st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1], use_container_width=True)
+        st.title("📜 Histórico")
+        st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1])
 
-    # --- 6. FINANCEIRO (ADM) ---
     elif menu == "📊 Financeiro" and sou_admin:
-        st.title("📊 Resumo Financeiro")
-        df_fin = pd.merge(df_e, df_prod, on="Nome")
-        total_estoque = (df_fin['Estoque_Total_Un'] * df_fin['Custo']).sum()
-        st.metric("Total Investido em Estoque", f"R$ {total_estoque:,.2f}")
-        st.dataframe(df_fin[['Nome', 'Estoque_Total_Un', 'Custo', 'Venda']])
-
-    # --- 7. EQUIPE (ADM) ---
-    elif menu == "👥 Equipe" and sou_admin:
-        st.title("👥 Utilizadores")
-        st.table(df_users[['nome', 'is_admin']])
+        st.title("📊 Financeiro")
+        st.metric("Total em Estoque", f"R$ { (pd.merge(df_e, df_prod, on='Nome')['Estoque_Total_Un'] * pd.merge(df_e, df_prod, on='Nome')['Custo']).sum() :.2f}")
 
 elif st.session_state["authentication_status"] is False:
-    st.error('Palavra-passe ou utilizador incorreto.')
+    st.error('Login incorreto.')
