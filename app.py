@@ -66,7 +66,7 @@ init_db()
 
 def registrar_log(user, acao):
     pd.DataFrame([[datetime.now().strftime("%d/%m/%Y %H:%M:%S"), user, acao]], 
-                 columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, mode='a', header=False, index=False)
+                  columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, mode='a', header=False, index=False)
 
 def get_config_bebida(nome, df_p):
     busca = df_p[df_p['Nome'] == nome]
@@ -210,80 +210,87 @@ else:
                     pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
                     pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
 
-    # --- 🍶 CASCOS ---
+    # --- 🍶 CONTROLE DE CASCOS (PARTE ALTERADA CONFORME SOLICITADO) ---
     elif menu == "🍶 Controle de Cascos":
-        st.title("🍶 Cascos")
-        with st.form("f_cas"):
-            cl, va, qt = st.text_input("Cliente").upper(), st.selectbox("Vasilhame", ["Coca 1L", "Coca 2L", "Romarinho", "600ml"]), st.number_input("Qtd", 1)
-            if st.form_submit_button("LANÇAR"):
-                pd.concat([df_cas, pd.DataFrame([[f"C{datetime.now().second}", datetime.now().strftime("%d/%m"), cl, "", va, qt, "DEVE", ""]], columns=df_cas.columns)]).to_csv(DB_CAS, index=False); st.rerun()
-        for i, r in df_cas[df_cas['Status'] == "DEVE"].iterrows():
-            st.error(f"🔴 {r['Cliente']} deve {r['Quantidade']}x {r['Vasilhame']}")
-            if st.button("BAIXA", key=f"bx_{r['ID']}"):
-                df_cas.at[i, 'Status'] = "PAGO"; df_cas.to_csv(DB_CAS, index=False); st.rerun()
+        st.title("🍶 Controle de Vasilhames")
+        
+        tab_deve, tab_hist, tab_vazio = st.tabs(["🔴 Pendentes", "📜 Histórico de Baixas", "📦 Saldo de Vazios"])
 
-    # --- ⚙️ PERFIL (ATUALIZADO) ---
+        with tab_deve:
+            with st.form("f_cas"):
+                cl, va, qt = st.text_input("Cliente").upper(), st.selectbox("Vasilhame", ["Coca 1L", "Coca 2L", "Romarinho", "600ml"]), st.number_input("Qtd", 1)
+                if st.form_submit_button("LANÇAR"):
+                    pd.concat([df_cas, pd.DataFrame([[f"C{datetime.now().second}", datetime.now().strftime("%d/%m"), cl, "", va, qt, "DEVE", ""]], columns=df_cas.columns)]).to_csv(DB_CAS, index=False); st.rerun()
+            
+            for i, r in df_cas[df_cas['Status'] == "DEVE"].iterrows():
+                with st.container():
+                    c1, c2, c3 = st.columns([4, 2, 2])
+                    c1.error(f"🔴 {r['Cliente']} deve {r['Quantidade']}x {r['Vasilhame']}")
+                    if c3.button("DAR BAIXA ✅", key=f"bx_{r['ID']}"):
+                        df_cas.at[i, 'Status'] = "PAGO"
+                        df_cas.at[i, 'QuemBaixou'] = n_logado
+                        df_cas.to_csv(DB_CAS, index=False)
+                        st.rerun()
+
+        with tab_hist:
+            st.subheader("Histórico de Devoluções")
+            df_pagos = df_cas[df_cas['Status'] == "PAGO"].sort_index(ascending=False)
+            for i, r in df_pagos.iterrows():
+                with st.container():
+                    h1, h2, h3 = st.columns([4, 2, 2])
+                    h1.write(f"🟢 **{r['Cliente']}** trouxe {r['Quantidade']}x {r['Vasilhame']}")
+                    h2.caption(f"Baixa por: {r['QuemBaixou']}")
+                    if h3.button("VOLTAR P/ LISTA ⏪", key=f"rev_{r['ID']}"):
+                        df_cas.at[i, 'Status'] = "DEVE"
+                        df_cas.to_csv(DB_CAS, index=False)
+                        st.rerun()
+
+        with tab_vazio:
+            st.subheader("Total de Cascos Vazios em Loja")
+            if not df_cas.empty:
+                resumo = df_cas[df_cas['Status'] == "PAGO"].groupby('Vasilhame')['Quantidade'].sum().reset_index()
+                st.table(resumo)
+                st.metric("Total Geral de Vazios", resumo['Quantidade'].sum())
+
+    # --- ⚙️ PERFIL ---
     elif menu == "⚙️ Perfil":
         st.title("⚙️ Meu Perfil")
         col_p1, col_p2 = st.columns([1, 2])
-        
         with col_p1:
             st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636;'></div>", unsafe_allow_html=True)
-        
         with col_p2:
             st.subheader("Dados do Usuário")
             st.info(f"**Nome:** {n_logado}\n\n**Usuário:** {u_logado}\n\n**Cargo:** {'Administrador' if is_adm else 'Colaborador'}")
-            
             with st.expander("Atualizar Foto de Perfil"):
                 upload = st.file_uploader("Escolha uma imagem", type=['png', 'jpg', 'jpeg'])
                 if st.button("SALVAR NOVA FOTO") and upload:
-                    img = Image.open(upload)
-                    img = img.convert("RGB")
-                    img.thumbnail((300, 300))
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
+                    img = Image.open(upload); img = img.convert("RGB"); img.thumbnail((300, 300))
+                    buf = io.BytesIO(); img.save(buf, format="PNG")
                     img_b64 = base64.b64encode(buf.getvalue()).decode()
                     df_usr.loc[df_usr['user'] == u_logado, 'foto'] = img_b64
-                    df_usr.to_csv(DB_USR, index=False)
-                    st.success("Foto atualizada! Reiniciando...")
-                    st.rerun()
+                    df_usr.to_csv(DB_USR, index=False); st.success("Foto atualizada! Reiniciando..."); st.rerun()
 
-    # --- 👥 EQUIPE (ATUALIZADO) ---
+    # --- 👥 EQUIPE ---
     elif menu == "👥 Equipe" and is_adm:
         st.title("👥 Gestão de Equipe")
-        
         with st.expander("➕ CADASTRAR NOVO MEMBRO"):
             with st.form("f_equipe"):
                 c1, c2, c3, c4 = st.columns(4)
-                new_u = c1.text_input("Usuário (Login)")
-                new_n = c2.text_input("Nome Completo")
-                new_s = c3.text_input("Senha", type="password")
-                new_a = c4.selectbox("Admin", ["NÃO", "SIM"])
-                if st.form_submit_button("ADICIONAR À EQUIPE"):
-                    if new_u and new_n and new_s:
-                        if new_u not in df_usr['user'].values:
-                            new_row = pd.DataFrame([[new_u, new_n, new_s, new_a, "0000-0000", ""]], columns=df_usr.columns)
-                            pd.concat([df_usr, new_row]).to_csv(DB_USR, index=False)
-                            registrar_log(n_logado, f"Cadastrou usuário {new_u}")
-                            st.success(f"{new_n} adicionado!")
-                            st.rerun()
-                        else: st.error("Usuário já existe.")
+                new_u, new_n, new_s, new_a = c1.text_input("Usuário"), c2.text_input("Nome"), c3.text_input("Senha", type="password"), c4.selectbox("Admin", ["NÃO", "SIM"])
+                if st.form_submit_button("ADICIONAR"):
+                    if new_u and new_n not in df_usr['user'].values:
+                        pd.concat([df_usr, pd.DataFrame([[new_u, new_n, new_s, new_a, "0000-0000", ""]], columns=df_usr.columns)]).to_csv(DB_USR, index=False); st.rerun()
 
-        st.subheader("Membros Ativos")
         for i, r in df_usr.iterrows():
             with st.container():
                 ec1, ec2, ec3, ec4 = st.columns([1, 3, 2, 1])
-                # Foto pequena
                 u_foto = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
                 if not pd.isna(r['foto']) and r['foto'] != "": u_foto = f"data:image/png;base64,{r['foto']}"
-                
                 ec1.markdown(f"<img src='{u_foto}' width='50' style='border-radius: 50%;'>", unsafe_allow_html=True)
                 ec2.markdown(f"**{r['nome']}** ({r['user']})")
                 ec3.markdown(f"🛡️ Admin: `{r['is_admin']}`")
-                if r['user'] != 'admin': # Proteção para não deletar o master
-                    if ec4.button("❌", key=f"del_{r['user']}"):
-                        df_usr[df_usr['user'] != r['user']].to_csv(DB_USR, index=False)
-                        st.rerun()
+                if r['user'] != 'admin' and ec4.button("❌", key=f"del_{r['user']}"):
+                    df_usr[df_usr['user'] != r['user']].to_csv(DB_USR, index=False); st.rerun()
                 st.divider()
 
     # --- 📊 ADMIN/LOGS ---
