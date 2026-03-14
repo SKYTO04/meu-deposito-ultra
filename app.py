@@ -4,15 +4,15 @@ from datetime import datetime
 import os
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Depósito Pacaembu - Gestão v51", page_icon="🍻", layout="wide")
+st.set_page_config(page_title="Depósito Pacaembu - Gestão v52", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v51) ---
-DB_PRODUTOS = "produtos_v51.csv"
-DB_ESTOQUE = "estoque_v51.csv"
-PILAR_ESTRUTURA = "pilares_v51.csv"
-USERS_FILE = "usuarios_v51.csv"
-LOG_FILE = "historico_v51.csv"
-CASCOS_FILE = "cascos_v51.csv"
+# --- 2. BANCO DE DADOS (v52) ---
+DB_PRODUTOS = "produtos_v52.csv"
+DB_ESTOQUE = "estoque_v52.csv"
+PILAR_ESTRUTURA = "pilares_v52.csv"
+USERS_FILE = "usuarios_v52.csv"
+LOG_FILE = "historico_v52.csv"
+CASCOS_FILE = "cascos_v52.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
@@ -32,7 +32,6 @@ def init_files():
 
 init_files()
 
-# --- FUNÇÕES DE APOIO ---
 def registrar_log(user, acao):
     data = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     pd.DataFrame([[data, user, acao]], columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, mode='a', header=False, index=False)
@@ -64,7 +63,7 @@ if not st.session_state['autenticado']:
                 st.session_state.update({'autenticado': True, 'name': check['nome'].values[0], 'is_admin': check['is_admin'].values[0] == 'SIM'})
                 registrar_log(st.session_state['name'], "Login")
                 st.rerun()
-            else: st.error("Incorreto.")
+            else: st.error("Acesso Negado.")
 else:
     nome_logado = st.session_state['name']
     sou_admin = st.session_state['is_admin']
@@ -157,33 +156,52 @@ else:
                     st.rerun()
         st.dataframe(df_e)
 
-    # --- ABA: CADASTRO DE PRODUTOS (TRAVA DE DUPLICIDADE AQUI) ---
+    # --- ABA: CADASTRO DE PRODUTOS (COM REMOÇÃO) ---
     elif menu == "✨ Cadastro de Produtos":
-        st.title("✨ Cadastro")
+        st.title("✨ Gestão de Produtos")
+        
+        # Parte 1: Formulário de Cadastro
         with st.form("cad_p", clear_on_submit=True):
+            st.subheader("Cadastrar Novo")
             c1, c2, c3 = st.columns([2, 2, 1])
             f_cat = c1.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante", "Outros"])
             f_nom = c2.text_input("Nome").upper().strip()
             f_pre = c3.number_input("Preço", 0.0)
-            btn_cad = st.form_submit_button("Cadastrar")
             
-            if btn_cad:
-                if f_nom == "":
-                    st.error("Digite o nome do produto.")
-                elif f_nom in df_prod['Nome'].values:
-                    st.warning(f"O produto '{f_nom}' já existe!")
-                else:
-                    # SALVAMENTO ÚNICO
-                    novo_p = pd.DataFrame([[f_cat, f_nom, f_pre]], columns=df_prod.columns)
-                    pd.concat([df_prod, novo_p]).to_csv(DB_PRODUTOS, index=False)
-                    
-                    novo_e = pd.DataFrame([[f_nom, 0]], columns=df_e.columns)
-                    pd.concat([df_e, novo_e]).to_csv(DB_ESTOQUE, index=False)
-                    
+            if st.form_submit_button("Cadastrar"):
+                if f_nom != "" and f_nom not in df_prod['Nome'].values:
+                    pd.concat([df_prod, pd.DataFrame([[f_cat, f_nom, f_pre]], columns=df_prod.columns)]).to_csv(DB_PRODUTOS, index=False)
+                    pd.concat([df_e, pd.DataFrame([[f_nom, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
                     registrar_log(nome_logado, f"CADASTRO: {f_nom}")
-                    st.success(f"{f_nom} cadastrado!")
+                    st.success(f"{f_nom} salvo!")
                     st.rerun()
-        st.dataframe(df_prod)
+                elif f_nom in df_prod['Nome'].values:
+                    st.warning("Este produto já existe.")
+
+        st.write("---")
+        
+        # Parte 2: Lista de Produtos com Opção de Remover
+        st.subheader("📋 Produtos Cadastrados")
+        if not df_prod.empty:
+            for i, row in df_prod.iterrows():
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                col1.write(f"**{row['Nome']}**")
+                col2.write(f"{row['Categoria']}")
+                col3.write(f"R$ {row['Preco_Unitario']:.2f}")
+                
+                # Botão de Excluir
+                if col4.button("🗑️", key=f"del_{row['Nome']}"):
+                    # Remove de Produtos
+                    df_prod = df_prod[df_prod['Nome'] != row['Nome']]
+                    df_prod.to_csv(DB_PRODUTOS, index=False)
+                    # Remove do Estoque
+                    df_e = df_e[df_e['Nome'] != row['Nome']]
+                    df_e.to_csv(DB_ESTOQUE, index=False)
+                    
+                    registrar_log(nome_logado, f"REMOÇÃO: {row['Nome']} excluído do sistema")
+                    st.rerun()
+        else:
+            st.info("Nenhum produto cadastrado.")
 
     # --- ABA: CASCOS ---
     elif menu == "🍶 Cascos":
