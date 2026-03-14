@@ -374,4 +374,11 @@ else:
         with col_p2:
             st.info(f"**Nome:** {n_logado}\n**Usuário:** {u_logado}")
             upload = st.file_uploader("Trocar Foto", type=['png', 'jpg'])
-            if 
+            if st.button("SALVAR FOTO") and upload:
+                img = Image.open(upload).convert("RGB")
+                img.thumbnail((300, 300))
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                img_b64 = base64.b64encode(buf.getvalue()).decode()
+                df_usr.loc[df_usr['user'] == u_logado, 'foto'] = img_b64
+                df_usr.to_csv(DB_USR, index=False); st.rerun()
