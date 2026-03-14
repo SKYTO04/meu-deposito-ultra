@@ -90,7 +90,7 @@ if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
 
 if not st.session_state['autenticado']:
-    st.markdown("<h1 style='text-align: center; color: #58a6ff; margin-top: 50px;'>💎 PACAEMBU ULTRA G66</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #58a6ff; margin-top: 50px;'>💎 ADEGA PACAEMBU </h1>", unsafe_allow_html=True)
     col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
     with col_l2:
         with st.form("login_prestige"):
