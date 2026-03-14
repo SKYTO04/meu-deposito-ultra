@@ -7,13 +7,13 @@ import os
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v39) ---
-DB_PRODUTOS = "produtos_v39.csv"
-DB_ESTOQUE = "estoque_v39.csv"
-PILAR_ESTRUTURA = "pilares_v39.csv"
-USERS_FILE = "usuarios_v39.csv"
-LOG_FILE = "historico_v39.csv"
-CASCOS_FILE = "cascos_v39.csv"
+# --- 2. BANCO DE DADOS (v40) ---
+DB_PRODUTOS = "produtos_v40.csv"
+DB_ESTOQUE = "estoque_v40.csv"
+PILAR_ESTRUTURA = "pilares_v40.csv"
+USERS_FILE = "usuarios_v40.csv"
+LOG_FILE = "historico_v40.csv"
+CASCOS_FILE = "cascos_v40.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
@@ -32,21 +32,14 @@ def init_files():
 
 init_files()
 
-def registrar_log(user, acao):
-    data = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    pd.DataFrame([[data, user, acao]], columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, mode='a', header=False, index=False)
-
-# --- FUNÇÃO DE INTELIGÊNCIA POR CATEGORIA ---
+# --- FUNÇÃO DE INTELIGÊNCIA (FORA DO FORMULÁRIO PARA SER DINÂMICA) ---
 def obter_dados_categoria(nome_produto, df_produtos):
     if df_produtos.empty:
         return 12, "Fardo"
     busca = df_produtos[df_produtos['Nome'] == nome_produto]
     if not busca.empty:
         cat = busca['Categoria'].values[0]
-        # REGRA: SÓ ROMARINHO É ENGRADADO
-        if cat == "Romarinho": 
-            return 24, "Engradado"
-        # OS DEMAIS SÃO FARDOS COM SUAS QUANTIDADES
+        if cat == "Romarinho": return 24, "Engradado"
         if cat == "Long Neck": return 24, "Fardo"
         if cat == "Cerveja Lata": return 12, "Fardo"
         if cat == "Refrigerante": return 6, "Fardo"
@@ -78,8 +71,39 @@ if st.session_state["authentication_status"]:
     df_e = pd.read_csv(DB_ESTOQUE)
     df_pilar = pd.read_csv(PILAR_ESTRUTURA)
 
-    # --- ABA: GESTÃO DE PILARES ---
-    if menu == "🏗️ Gestão de Pilares":
+    # --- ABA: ENTRADA DE ESTOQUE (DINÂMICA) ---
+    if menu == "📦 Entrada de Estoque":
+        st.title("📦 Entrada de Mercadoria")
+        
+        if not df_prod.empty:
+            # SELETOR FORA DO FORMULÁRIO PARA ATUALIZAR NA HORA
+            p_sel = st.selectbox("Selecione o Produto", df_prod['Nome'].unique())
+            
+            # Obtém os dados assim que o produto muda
+            un_auto, termo = obter_dados_categoria(p_sel, df_prod)
+            
+            # Mostra a categoria atual apenas para conferência
+            cat_atual = df_prod[df_prod['Nome'] == p_sel]['Categoria'].values[0]
+            st.info(f"Categoria: **{cat_atual}** | Unidades padrão: **{un_auto}**")
+
+            with st.form("form_entrada"):
+                c1, c2 = st.columns(2)
+                u_f = c1.number_input(f"Unidades por {termo.lower()}", value=un_auto)
+                n_f = c1.number_input(f"Quantidade de {termo}s", 0)
+                n_s = c2.number_input("Unidades Soltas (Avulsas)", 0)
+                
+                if st.form_submit_button("Confirmar Entrada"):
+                    total = (n_f * u_f) + n_s
+                    df_e.loc[df_e['Nome'] == p_sel, 'Estoque_Total_Un'] += total
+                    df_e.to_csv(DB_ESTOQUE, index=False)
+                    st.success(f"Entrada de {total} unidades realizada!")
+                    st.rerun()
+        else:
+            st.warning("Cadastre produtos primeiro.")
+        st.dataframe(df_e)
+
+    # --- ABA: GESTÃO DE PILARES (DINÂMICA) ---
+    elif menu == "🏗️ Gestão de Pilares":
         st.title("🏗️ Controle de Pilares")
         
         for np in df_pilar['NomePilar'].unique():
@@ -91,70 +115,38 @@ if st.session_state["authentication_status"]:
                     cols = st.columns(5)
                     for _, row in dados_c.iterrows():
                         with cols[int(row['Posicao'])-1]:
-                            st.markdown(f'<div style="background-color:#1E1E1E; border:1px solid #4CAF50; padding:5px; border-radius:5px; text-align:center;"><small>{row["Bebida"]}</small><br><b style="color:#FFD700;">+{row["Avulsos"]} Av</b></div>', unsafe_allow_html=True)
+                            st.markdown(f'<div style="border:1px solid #4CAF50; padding:5px; border-radius:5px; text-align:center;">{row["Bebida"]}</div>', unsafe_allow_html=True)
                             if st.button("RETIRAR", key=f"r{row['ID']}"):
                                 st.session_state[f"ask_{row['ID']}"] = True
                             
                             if st.session_state.get(f"ask_{row['ID']}", False):
-                                with st.form(f"f{row['ID']}"):
-                                    q_auto, termo = obter_dados_categoria(row['Bebida'], df_prod)
-                                    q_f = st.number_input(f"Unidades no {termo.lower()}?", value=q_auto)
-                                    if st.form_submit_button("Confirmar Baixa"):
+                                # Identifica os dados da categoria do produto do pilar
+                                q_auto, termo_pilar = obter_dados_categoria(row['Bebida'], df_prod)
+                                with st.form(f"baixa_{row['ID']}"):
+                                    q_f = st.number_input(f"Unidades no {termo_pilar.lower()}?", value=q_auto)
+                                    if st.form_submit_button("Confirmar"):
                                         total = q_f + row['Avulsos']
                                         df_e.loc[df_e['Nome'] == row['Bebida'], 'Estoque_Total_Un'] -= total
                                         df_e.to_csv(DB_ESTOQUE, index=False)
                                         df_pilar[df_pilar['ID'] != row['ID']].to_csv(PILAR_ESTRUTURA, index=False)
-                                        registrar_log(nome_logado, f"Baixa: {row['Bebida']} ({total}un)")
+                                        st.session_state[f"ask_{row['ID']}"] = False
                                         st.rerun()
 
-    # --- ABA: ENTRADA DE ESTOQUE ---
-    elif menu == "📦 Entrada de Estoque":
-        st.title("📦 Entrada de Mercadoria")
-        if not df_prod.empty:
-            with st.form("ent_v39"):
-                p_sel = st.selectbox("Selecione o Produto", df_prod['Nome'].unique())
-                un_auto, termo = obter_dados_categoria(p_sel, df_prod)
-                
-                c1, c2 = st.columns(2)
-                u_f = c1.number_input(f"Unidades por {termo.lower()}", value=un_auto)
-                n_f = c1.number_input(f"Qtd de {termo}s", 0)
-                n_s = c2.number_input("Unidades Soltas", 0)
-                
-                if st.form_submit_button("Confirmar Entrada"):
-                    total = (n_f * u_f) + n_s
-                    df_e.loc[df_e['Nome'] == p_sel, 'Estoque_Total_Un'] += total
-                    df_e.to_csv(DB_ESTOQUE, index=False)
-                    registrar_log(nome_logado, f"Entrada: {total}un de {p_sel}")
-                    st.success(f"Estoque de {p_sel} atualizado com sucesso!")
-                    st.rerun()
-        st.dataframe(df_e)
-
-    # --- ABA: CADASTRO DE PRODUTOS ---
+    # --- ABA: CADASTRO ---
     elif menu == "✨ Cadastro de Produtos":
         st.title("✨ Cadastro")
         with st.form("cad_p"):
             c1, c2, c3 = st.columns([2, 2, 1])
             cat = c1.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante", "Outros"])
             nome = c2.text_input("Nome do Produto").upper()
-            preco = c3.number_input("Preço Unitário (R$)", 0.0)
+            preco = c3.number_input("Preço Unitário", 0.0)
             if st.form_submit_button("Cadastrar"):
                 if nome:
                     pd.concat([df_prod, pd.DataFrame([[cat, nome, preco]], columns=df_prod.columns)]).to_csv(DB_PRODUTOS, index=False)
                     pd.concat([df_e, pd.DataFrame([[nome, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
                     st.rerun()
-        
-        st.subheader("Lista de Produtos")
-        for i, row in df_prod.iterrows():
-            cc1, cc2, cc3 = st.columns([4, 3, 1])
-            cc1.write(f"**{row['Nome']}** ({row['Categoria']})")
-            cc2.write(f"R$ {row['Preco_Unitario']:.2f}")
-            if cc3.button("Excluir", key=f"del_{row['Nome']}"):
-                df_prod[df_prod['Nome'] != row['Nome']].to_csv(DB_PRODUTOS, index=False)
-                df_e[df_e['Nome'] != row['Nome']].to_csv(DB_ESTOQUE, index=False)
-                st.rerun()
 
-    # --- ABAS ADM (Financeiro, Histórico, Equipe, Cascos) ---
-    # ... código mantido ...
+    # ... (Demais abas Financeiro, Equipe, etc, mantidas)
 
 elif st.session_state["authentication_status"] is False:
     st.error('Login incorreto.')
