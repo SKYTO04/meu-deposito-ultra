@@ -10,7 +10,7 @@ import io
 # 1. DESIGN PREMIUM - DARK PRESTIGE V66 (TOTAL)
 # =================================================================
 st.set_page_config(
-    page_title="Pacaembu Ultra G66", 
+    page_title="Adega Pacaembu", 
     page_icon="💎", 
     layout="wide",
     initial_sidebar_state="expanded"
