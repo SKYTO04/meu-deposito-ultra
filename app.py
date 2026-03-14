@@ -7,14 +7,14 @@ import os
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v32) ---
-DB_PRODUTOS = "produtos_v32.csv"
-DB_ESTOQUE = "estoque_v32.csv"
-PILAR_ESTRUTURA = "pilares_v32.csv"
-USERS_FILE = "usuarios_v32.csv"
-LOG_FILE = "historico_v32.csv"
-CASCOS_FILE = "cascos_v32.csv"
-CASCOS_HISTORICO = "cascos_historico_v32.csv"
+# --- 2. BANCO DE DADOS (v33) ---
+DB_PRODUTOS = "produtos_v33.csv"
+DB_ESTOQUE = "estoque_v33.csv"
+PILAR_ESTRUTURA = "pilares_v33.csv"
+USERS_FILE = "usuarios_v33.csv"
+LOG_FILE = "historico_v33.csv"
+CASCOS_FILE = "cascos_v33.csv"
+CASCOS_HISTORICO = "cascos_historico_v33.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
@@ -64,7 +64,7 @@ if st.session_state["authentication_status"]:
     df_e = pd.read_csv(DB_ESTOQUE)
     df_pilar = pd.read_csv(PILAR_ESTRUTURA)
 
-    # --- ABA: GESTÃO DE PILARES ---
+    # --- ABA: GESTÃO DE PILARES (INVERSÃO 3/2 E AVULSOS) ---
     if menu == "🏗️ Gestão de Pilares":
         st.title("🏗️ Gestão de Pilares")
         with st.expander("➕ Montar Nova Camada", expanded=False):
@@ -123,12 +123,14 @@ if st.session_state["authentication_status"]:
                                         registrar_log(nome_logado, f"Retirou {row['Bebida']} ({total}un)")
                                         st.rerun()
 
-    # --- ABA: CADASTRO (COM OPÇÃO DE REMOVER) ---
+    # --- ABA: CADASTRO (CATEGORIA ROMARINHO VOLTOU) ---
     elif menu == "✨ Cadastro de Produtos":
         st.title("✨ Cadastro e Gestão")
         with st.form("cad_p"):
+            st.subheader("Novo Produto")
             c1, c2, c3 = st.columns([2, 2, 1])
-            cat = c1.selectbox("Categoria", ["Cerveja", "Refrigerante", "Destilado", "Outros"])
+            # ROMARINHO VOLTOU PARA A LISTA ABAIXO
+            cat = c1.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante", "Outros"])
             nome = c2.text_input("Nome do Produto").upper()
             preco = c3.number_input("Preço Unitário (R$)", 0.0)
             if st.form_submit_button("Cadastrar"):
@@ -147,7 +149,7 @@ if st.session_state["authentication_status"]:
             if cc3.button("Excluir", key=f"del_{row['Nome']}"):
                 df_prod[df_prod['Nome'] != row['Nome']].to_csv(DB_PRODUTOS, index=False)
                 df_e[df_e['Nome'] != row['Nome']].to_csv(DB_ESTOQUE, index=False)
-                registrar_log(nome_logado, f"Removeu produto: {row['Nome']}")
+                registrar_log(nome_logado, f"Removeu: {row['Nome']}")
                 st.rerun()
 
     # --- ABA: ENTRADA DE ESTOQUE ---
@@ -179,12 +181,17 @@ if st.session_state["authentication_status"]:
         c2.metric("Produtos Ativos", len(df_prod))
         st.dataframe(df_fin[['Nome', 'Estoque_Total_Un', 'Preco_Unitario', 'Total_R$']], use_container_width=True)
 
-    # --- ABA: EQUIPE (ADM) ---
+    # --- ABA: HISTÓRICO ---
+    elif menu == "📜 Histórico (Adm)" and sou_admin:
+        st.title("📜 Logs do Sistema")
+        st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1], use_container_width=True)
+
+    # --- ABA: EQUIPE ---
     elif menu == "👥 Equipe" and sou_admin:
-        st.title("👥 Gestão de Usuários")
-        with st.form("user"):
-            u, n, s, a = st.columns([1, 1, 1, 1])
-            new_u = u.text_input("Usuário")
+        st.title("👥 Gestão de Equipe")
+        with st.form("add_user"):
+            u, n, s, a = st.columns(4)
+            new_u = u.text_input("User")
             new_n = n.text_input("Nome")
             new_s = s.text_input("Senha")
             new_a = a.selectbox("Admin?", ["NÃO", "SIM"])
@@ -192,11 +199,6 @@ if st.session_state["authentication_status"]:
                 pd.concat([df_users, pd.DataFrame([[new_u, new_n, new_s, new_a]], columns=df_users.columns)]).to_csv(USERS_FILE, index=False)
                 st.rerun()
         st.dataframe(df_users)
-
-    # --- ABA: HISTÓRICO ---
-    elif menu == "📜 Histórico (Adm)" and sou_admin:
-        st.title("📜 Logs do Sistema")
-        st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1], use_container_width=True)
 
     # --- ABA: CASCOS ---
     elif menu == "🍶 Cascos":
