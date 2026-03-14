@@ -203,7 +203,8 @@ else:
             n_pilar = col_sel2.text_input("Nome do Pilar").upper().strip() if p_opcao == "+ CRIAR NOVO PILAR" else p_opcao
             if n_pilar:
                 cat_filtro = st.selectbox("Categoria", df_p['Categoria'].unique())
-                c_atual = 1 if df_pil[df_pil['NomePilar']==n_pilar].empty else df_pil[df_pil['NomePilar']==n_pilar]['Camada'].max() + 1
+                c_data = df_pil[df_pil['NomePilar']==n_pilar]
+                c_atual = 1 if c_data.empty else int(c_data['Camada'].max()) + 1
                 at, fr = (3, 2) if c_atual % 2 != 0 else (2, 3)
                 lista_beb = ["Vazio"] + df_p[df_p['Categoria'] == cat_filtro]['Nome'].tolist()
                 beb_dict, av_dict = {}, {}
@@ -214,7 +215,9 @@ else:
                         av_dict[i+1] = st.number_input(f"Unid", 0, key=f"a_{i+1}")
                 if st.button(f"CONSOLIDAR CAMADA {c_atual}"):
                     regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().microsecond}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
-                    pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False); st.rerun()
+                    if regs:
+                        pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False)
+                        st.success("Camada salva!"); st.rerun()
 
         for pilar in sorted(df_pil['NomePilar'].unique()):
             st.markdown(f"### 📍 {pilar}")
@@ -284,8 +287,7 @@ else:
                         df_cas.at[i, 'Status'] = "PAGO"
                         df_cas.at[i, 'Data'] = datetime.now().strftime("%d/%m %H:%M")
                         df_cas.at[i, 'QuemBaixou'] = n_logado
-                        df_cas.to_csv(DB_CAS, index=False)
-                        st.rerun()
+                        df_cas.to_csv(DB_CAS, index=False); st.rerun()
 
         with tab_empresa:
             st.subheader("🚚 Coleta de Vasilhames (Empresa)")
@@ -309,7 +311,7 @@ else:
                 for i, t in enumerate(tipos):
                     val = res[res['Vasilhame'] == t]['Quantidade'].values
                     qtd_metric = val[0] if len(val)>0 else 0
-                    [c_v1, c_v2, c_v3][i].metric(t, f"{qtd_metric} un")
+                    [c_v1, c_v2, c_v3][i % 3].metric(t, f"{qtd_metric} un")
                 st.table(res)
 
         with tab_hist:
@@ -337,7 +339,6 @@ else:
     # --- 👥 EQUIPE (PROFISSIONAL E BONITA) ---
     elif menu == "👥 Equipe" and is_adm:
         st.title("👥 Gestão de Equipe")
-        
         with st.expander("➕ CADASTRAR NOVO MEMBRO"):
             with st.form("f_eq"):
                 c1, c2 = st.columns(2)
@@ -352,23 +353,12 @@ else:
 
         st.markdown("---")
         for idx, row in df_usr.iterrows():
-            with st.container():
-                # HTML para o cartão profissional
-                tipo_user = "⭐ GERENTE" if row['is_admin'] == "SIM" else "👤 OPERADOR"
-                cor_border = "#238636" if row['is_admin'] == "SIM" else "#58a6ff"
-                
-                st.markdown(f"""
-                <div class="user-card" style="border-left: 5px solid {cor_border};">
-                    <span style="float: right; color: {cor_border}; font-weight: bold;">{tipo_user}</span>
-                    <h3 style="margin: 0;">{row['nome']}</h3>
-                    <code style="background: none; color: #8b949e;">Login: {row['user']}</code>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Botão de exclusão (exceto para o admin principal)
-                if row['user'] != 'admin':
-                    if st.button(f"Remover {row['user']}", key=f"del_{row['user']}"):
-                        df_usr.drop(idx).to_csv(DB_USR, index=False); st.rerun()
+            tipo_user = "⭐ GERENTE" if row['is_admin'] == "SIM" else "👤 OPERADOR"
+            cor_border = "#238636" if row['is_admin'] == "SIM" else "#58a6ff"
+            st.markdown(f'<div class="user-card" style="border-left: 5px solid {cor_border};"><span style="float: right; color: {cor_border}; font-weight: bold;">{tipo_user}</span><h3 style="margin: 0;">{row["nome"]}</h3><code style="background: none; color: #8b949e;">Login: {row["user"]}</code></div>', unsafe_allow_html=True)
+            if row['user'] != 'admin':
+                if st.button(f"Remover {row['user']}", key=f"del_{row['user']}"):
+                    df_usr.drop(idx).to_csv(DB_USR, index=False); st.rerun()
 
     # --- 📜 LOGS ---
     elif menu == "📜 Logs" and is_adm:
@@ -379,4 +369,9 @@ else:
     elif menu == "⚙️ Perfil":
         st.title("⚙️ Meu Perfil")
         col_p1, col_p2 = st.columns([1, 2])
-        with col_p1: st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636
+        with col_p1: 
+            st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636; height: 180px; object-fit: cover;'></div>", unsafe_allow_html=True)
+        with col_p2:
+            st.info(f"**Nome:** {n_logado}\n**Usuário:** {u_logado}")
+            upload = st.file_uploader("Trocar Foto", type=['png', 'jpg'])
+            if 
