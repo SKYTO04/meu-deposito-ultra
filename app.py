@@ -38,12 +38,6 @@ st.markdown("""
     [data-testid="stForm"] {
         background-color: #161b22; border: 1px solid #30363d; border-radius: 15px; padding: 20px;
     }
-    /* Estilo Adicional para o Dashboard Profissional */
-    .status-card {
-        background: linear-gradient(145deg, #1e252e, #161b22);
-        padding: 25px; border-radius: 20px; border: 1px solid #30363d;
-        text-align: center; box-shadow: 0 8px 16px rgba(0,0,0,0.3);
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -111,7 +105,6 @@ if not st.session_state['autenticado']:
 else:
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
     
-    # --- CORREÇÃO APLICADA AQUI ---
     df_p = pd.read_csv(DB_PROD)
     df_e = pd.read_csv(DB_EST)
     df_pil = pd.read_csv(DB_PIL)
@@ -125,7 +118,7 @@ else:
         raw = user_row['foto'].values[0]
         if not pd.isna(raw) and raw != "": f_path = f"data:image/png;base64,{raw}"
 
-    st.sidebar.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='100' style='border-radius: 50%; border: 3px solid #238636; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='100' style='border-radius: 50%; border: 3px solid #238636; margin-bottom: 10px; object-fit: cover; height: 100px;'></div>", unsafe_allow_html=True)
     st.sidebar.markdown(f"<p style='text-align: center; font-size: 1.2em;'><b>{n_logado}</b></p>", unsafe_allow_html=True)
     
     menu = st.sidebar.radio("NAVEGAÇÃO", ["🏠 Dashboard", "🍻 PDV Romarinho", "🏗️ Pilares (Amarração)", "📦 Estoque Geral", "✨ Cadastro", "🍶 Controle de Cascos", "⚙️ Perfil"] + (["📊 Admin Financeiro", "📜 Logs", "👥 Equipe"] if is_adm else []))
@@ -136,7 +129,6 @@ else:
     # --- 🏠 DASHBOARD ---
     if menu == "🏠 Dashboard":
         st.title("🚀 Central de Comando")
-        
         m1, m2, m3, m4 = st.columns(4)
         total_devedores = len(df_cas[df_cas['Status'] == "DEVE"])
         total_itens = len(df_p)
@@ -146,24 +138,20 @@ else:
         m1.metric("Pendências Cascos", f"{total_devedores} Clientes", delta="Atenção", delta_color="inverse")
         m2.metric("Itens no Catálogo", f"{total_itens} Produtos")
         m3.metric("Pilares Ativos", f"{total_pilares} Estruturas")
-        m4.metric("Baixo Estoque", f"{baixo_estoque} Alertas", delta="-2% vol")
+        m4.metric("Baixo Estoque", f"{baixo_estoque} Alertas")
 
         st.markdown("---")
         col_left, col_right = st.columns([2, 1])
-        
         with col_left:
             st.subheader("📊 Movimentações Recentes")
             df_log_view = pd.read_csv(DB_LOG).sort_values(by='Data', ascending=False).head(8)
             st.table(df_log_view[['Data', 'Usuario', 'Ação']])
-            
         with col_right:
             st.subheader("🔔 Alertas de Estoque")
             critico = df_e[df_e['Estoque_Total_Un'] < 24].head(5)
             if not critico.empty:
-                for _, r in critico.iterrows():
-                    st.warning(f"**{r['Nome']}**: Apenas {r['Estoque_Total_Un']} un.")
-            else:
-                st.success("Estoque em níveis saudáveis.")
+                for _, r in critico.iterrows(): st.warning(f"**{r['Nome']}**: {r['Estoque_Total_Un']} un.")
+            else: st.success("Estoque em níveis saudáveis.")
 
     # --- 🍻 PDV ROMARINHO ---
     elif menu == "🍻 PDV Romarinho":
@@ -226,16 +214,10 @@ else:
         st.dataframe(df_e, use_container_width=True, hide_index=True)
         st.subheader("⚙️ Movimentação Manual")
         sel_est = st.selectbox("Produto", df_p['Nome'].unique())
-        row_p = df_p[df_p['Nome'] == sel_est]
-        cat_p = row_p['Categoria'].values[0] if not row_p.empty else ""
         u_b, t_t = get_config_bebida(sel_est, df_p)
         col_m1, col_m2, col_m3 = st.columns(3)
         tipo_mov = col_m1.radio("Operação", ["➕ ENTRADA", "➖ SAÍDA"])
-        if cat_p in ["Alimentos", "Limpeza"]:
-            qtd_f, qtd_u = 0, col_m2.number_input("Quantidade (Unidades)", 0)
-            col_m3.info("Item Unitário")
-        else:
-            qtd_f, qtd_u = col_m2.number_input(f"Qtd {t_t}s", 0), col_m3.number_input("Qtd Avulsas", 0)
+        qtd_f, qtd_u = col_m2.number_input(f"Qtd {t_t}s", 0), col_m3.number_input("Qtd Avulsas", 0)
         if st.button("EXECUTAR"):
             total_un = (qtd_f * u_b) + qtd_u
             if "SAÍDA" in tipo_mov: df_e.loc[df_e['Nome'] == sel_est, 'Estoque_Total_Un'] -= total_un
@@ -287,7 +269,7 @@ else:
     elif menu == "⚙️ Perfil":
         st.title("⚙️ Meu Perfil")
         col_p1, col_p2 = st.columns([1, 2])
-        with col_p1: st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636;'></div>", unsafe_allow_html=True)
+        with col_p1: st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636; height: 180px; object-fit: cover;'></div>", unsafe_allow_html=True)
         with col_p2:
             st.subheader("Dados do Usuário")
             st.info(f"**Nome:** {n_logado}\n\n**Usuário:** {u_logado}\n\n**Cargo:** {'Administrador' if is_adm else 'Colaborador'}")
@@ -298,26 +280,54 @@ else:
                     buf = io.BytesIO(); img.save(buf, format="PNG"); img_b64 = base64.b64encode(buf.getvalue()).decode()
                     df_usr.loc[df_usr['user'] == u_logado, 'foto'] = img_b64; df_usr.to_csv(DB_USR, index=False); st.success("Foto atualizada!"); st.rerun()
 
-    # --- 👥 EQUIPE ---
+    # --- 👥 EQUIPE (VERSÃO PRO) ---
     elif menu == "👥 Equipe" and is_adm:
-        st.title("👥 Gestão de Equipe")
-        with st.expander("➕ CADASTRAR NOVO MEMBRO"):
-            with st.form("f_equipe"):
-                c1, c2, c3, c4 = st.columns(4)
-                new_u, new_n, new_s, new_a = c1.text_input("Usuário"), c2.text_input("Nome"), c3.text_input("Senha", type="password"), c4.selectbox("Admin", ["NÃO", "SIM"])
-                if st.form_submit_button("ADICIONAR"):
-                    if new_u and new_n not in df_usr['user'].values:
-                        pd.concat([df_usr, pd.DataFrame([[new_u, new_n, new_s, new_a, "0000-0000", ""]], columns=df_usr.columns)]).to_csv(DB_USR, index=False); st.rerun()
+        st.title("👥 Gestão de Alta Performance")
+        with st.expander("➕ CADASTRAR NOVO MEMBRO DA EQUIPE"):
+            with st.form("f_equipe_pro"):
+                c1, c2 = st.columns(2)
+                new_u = c1.text_input("👤 Usuário (Login)")
+                new_n = c2.text_input("📛 Nome Completo")
+                c3, c4 = st.columns(2)
+                new_s = c3.text_input("🔑 Senha de Acesso", type="password")
+                new_a = c4.selectbox("🛡️ Nível de Acesso", ["NÃO", "SIM"], help="SIM define como Administrador")
+                if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
+                    if new_u and new_u not in df_usr['user'].values:
+                        novo_membro = pd.DataFrame([[new_u, new_n, new_s, new_a, "0000-0000", ""]], columns=df_usr.columns)
+                        pd.concat([df_usr, novo_membro]).to_csv(DB_USR, index=False)
+                        st.success(f"✅ {new_n} agora faz parte da equipe!"); st.rerun()
+                    else: st.error("Erro: Usuário já existe ou campo vazio.")
+
+        st.markdown("---")
         for i, r in df_usr.iterrows():
             with st.container():
-                ec1, ec2, ec3, ec4 = st.columns([1, 3, 2, 1])
-                u_foto = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-                if not pd.isna(r['foto']) and r['foto'] != "": u_foto = f"data:image/png;base64,{r['foto']}"
-                ec1.markdown(f"<img src='{u_foto}' width='50' style='border-radius: 50%;'>", unsafe_allow_html=True)
-                ec2.markdown(f"**{r['nome']}** ({r['user']})")
-                ec3.markdown(f"🛡️ Admin: `{r['is_admin']}`")
-                if r['user'] != 'admin' and ec4.button("❌", key=f"del_{r['user']}"):
-                    df_usr[df_usr['user'] != r['user']].to_csv(DB_USR, index=False); st.rerun()
+                u_foto_card = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                if not pd.isna(r['foto']) and r['foto'] != "": u_foto_card = f"data:image/png;base64,{r['foto']}"
+                
+                st.markdown(f"""
+                    <div style="background-color: #1c2128; padding: 15px; border-radius: 15px; border: 1px solid #30363d; margin-bottom: 10px;">
+                        <div style="display: flex; align-items: center;">
+                            <div style="flex-shrink: 0; margin-right: 20px;">
+                                <img src="{u_foto_card}" style="width: 70px; height: 70px; border-radius: 50%; border: 2px solid #58a6ff; object-fit: cover;">
+                            </div>
+                            <div style="flex-grow: 1;">
+                                <h3 style="margin: 0; color: #f0f6fc; font-size: 1.2em;">{r['nome']}</h3>
+                                <p style="margin: 0; color: #8b949e; font-size: 0.9em;">ID: @{r['user']} | 🔐 Nível: {'Admin' if r['is_admin'] == 'SIM' else 'Colaborador'}</p>
+                            </div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
+                with col_btn1:
+                    with st.expander(f"👁️ Ver Credenciais"):
+                        st.code(f"Senha: {r['senha']}", language=None)
+                with col_btn2:
+                    if r['is_admin'] == 'SIM': st.info("🛡️ Conta Master")
+                with col_btn3:
+                    if r['user'] != 'admin':
+                        if st.button("Remover", key=f"del_pro_{r['user']}", use_container_width=True):
+                            df_usr[df_usr['user'] != r['user']].to_csv(DB_USR, index=False); st.rerun()
 
     # --- 📊 ADMIN/LOGS ---
     elif menu == "📊 Admin Financeiro" and is_adm:
