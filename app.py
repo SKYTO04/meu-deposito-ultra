@@ -88,8 +88,8 @@ if not st.session_state['autenticado']:
     col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
     with col_l2:
         with st.form("login_prestige"):
-            u_in = st.text_input("👤 Usuário")
-            s_in = st.text_input("🔑 Senha", type="password")
+            u_in = st.text_input("👤 Usuário").strip() # Limpeza de espaço automático
+            s_in = st.text_input("🔑 Senha", type="password").strip()
             if st.form_submit_button("ACESSAR SISTEMA", use_container_width=True):
                 df_u = pd.read_csv(DB_USR)
                 valid = df_u[(df_u['user'] == u_in) & (df_u['senha'].astype(str) == s_in)]
@@ -101,7 +101,7 @@ if not st.session_state['autenticado']:
                     })
                     registrar_log(st.session_state['u_n'], "Login")
                     st.rerun()
-                else: st.error("Acesso negado.")
+                else: st.error("Acesso negado. Verifique usuário e senha.")
 else:
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
     
@@ -226,15 +226,41 @@ else:
 
     # --- ✨ CADASTRO ---
     elif menu == "✨ Cadastro":
-        st.title("✨ Catálogo")
-        with st.form("f_cad"):
-            c1, c2, c3 = st.columns([2, 2, 1])
-            fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Alimentos", "Limpeza", "Outros"])
-            fn, fp = c2.text_input("Nome").upper(), c3.number_input("Preço", 0.0)
-            if st.form_submit_button("CADASTRAR"):
-                if fn and fn not in df_p['Nome'].values:
-                    pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
-                    pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
+        st.title("✨ Catálogo e Produtos")
+        
+        # Parte 1: Cadastro
+        with st.expander("🆕 CADASTRAR NOVO PRODUTO", expanded=True):
+            with st.form("f_cad"):
+                c1, c2, c3 = st.columns([2, 2, 1])
+                fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Alimentos", "Limpeza", "Outros"])
+                fn, fp = c2.text_input("Nome").upper(), c3.number_input("Preço", 0.0)
+                if st.form_submit_button("CADASTRAR NO SISTEMA"):
+                    if fn and fn not in df_p['Nome'].values:
+                        pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
+                        pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False)
+                        registrar_log(n_logado, f"Cadastrou {fn}")
+                        st.success(f"{fn} adicionado!"); st.rerun()
+                    else: st.error("Produto já existe ou nome vazio.")
+
+        st.markdown("---")
+        
+        # Parte 2: Remoção (Apenas Adm pode ver esta seção se quiser restringir, mas deixei para todos aqui)
+        st.subheader("🗑️ Gerenciar Catálogo")
+        prod_remover = st.selectbox("Selecione um produto para remover", ["-- Selecione --"] + list(df_p['Nome'].unique()))
+        
+        if prod_remover != "-- Selecione --":
+            st.warning(f"Atenção: Remover '{prod_remover}' apagará o registro do catálogo e do estoque permanentemente.")
+            if st.button(f"CONFIRMAR EXCLUSÃO DE {prod_remover}"):
+                # Remove do Catálogo
+                df_p = df_p[df_p['Nome'] != prod_remover]
+                df_p.to_csv(DB_PROD, index=False)
+                # Remove do Estoque
+                df_e = df_e[df_e['Nome'] != prod_remover]
+                df_e.to_csv(DB_EST, index=False)
+                
+                registrar_log(n_logado, f"Removeu {prod_remover}")
+                st.success(f"O produto {prod_remover} foi removido com sucesso!")
+                st.rerun()
 
     # --- 🍶 CONTROLE DE CASCOS ---
     elif menu == "🍶 Controle de Cascos":
@@ -286,10 +312,10 @@ else:
         with st.expander("➕ CADASTRAR NOVO MEMBRO DA EQUIPE"):
             with st.form("f_equipe_pro"):
                 c1, c2 = st.columns(2)
-                new_u = c1.text_input("👤 Usuário (Login)")
+                new_u = c1.text_input("👤 Usuário (Login)").strip()
                 new_n = c2.text_input("📛 Nome Completo")
                 c3, c4 = st.columns(2)
-                new_s = c3.text_input("🔑 Senha de Acesso", type="password")
+                new_s = c3.text_input("🔑 Senha de Acesso", type="password").strip()
                 new_a = c4.selectbox("🛡️ Nível de Acesso", ["NÃO", "SIM"], help="SIM define como Administrador")
                 if st.form_submit_button("FINALIZAR CADASTRO", use_container_width=True):
                     if new_u and new_u not in df_usr['user'].values:
