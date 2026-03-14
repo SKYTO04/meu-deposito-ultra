@@ -186,69 +186,83 @@ else:
                         df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 1
                         df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Unid {item['Nome']}"); st.rerun()
 
-    # --- 🏗️ PILARES (VERSÃO PILHA VERTICAL) ---
+    # --- 🏗️ PILARES (VERSÃO AJUSTADA: BASE PRIMEIRO + NOVO PILAR) ---
     elif menu == "🏗️ Pilares (Amarração)":
         st.title("🏗️ Engenharia de Pilares")
         
-        with st.expander("➕ MONTAR NOVA CAMADA (ESTRUTURA AMARRADA)"):
-            p_alvo = st.selectbox("Pilar Destino", ["+ Criar Novo"] + list(df_pil['NomePilar'].unique()))
-            n_pilar = st.text_input("Identificação do Pilar").upper() if p_alvo == "+ Criar Novo" else p_alvo
-            cat_filtro = st.selectbox("Filtrar Categoria para Montagem", df_p['Categoria'].unique())
+        with st.expander("➕ MONTAR NOVA CAMADA (ESTRUTURA AMARRADA)", expanded=True):
+            pilares_existentes = sorted(df_pil['NomePilar'].unique().tolist())
+            col_sel1, col_sel2 = st.columns([1, 1])
             
+            p_opcao = col_sel1.selectbox("Escolha um pilar", ["+ CRIAR NOVO PILAR"] + pilares_existentes)
+            
+            if p_opcao == "+ CRIAR NOVO PILAR":
+                n_pilar = col_sel2.text_input("Nome do NOVO Pilar (Ex: COCA, FANTA)").upper().strip()
+            else:
+                n_pilar = p_opcao
+                col_sel2.info(f"Adicionando ao pilar: **{n_pilar}**")
+
             if n_pilar:
+                st.divider()
+                cat_filtro = st.selectbox("Categoria para esta Camada", df_p['Categoria'].unique())
+                
+                # Lógica: Se não existe no DB, camada 1 (BASE). Se existe, pega a próxima.
                 c_atual = 1 if df_pil[df_pil['NomePilar']==n_pilar].empty else df_pil[df_pil['NomePilar']==n_pilar]['Camada'].max() + 1
                 at, fr = (3, 2) if c_atual % 2 != 0 else (2, 3)
                 
-                if c_atual == 1: st.success(f"🌟 Iniciando BASE do Pilar: **{n_pilar}**")
-                else: st.info(f"⬆️ Montando sobre a Camada {c_atual-1}")
-                st.warning(f"📐 Padrão desta Camada: **{at}x{fr}**")
+                tag_camada = "🧱 BASE (Camada 1)" if c_atual == 1 else f"📦 Camada {c_atual}"
+                st.subheader(f"{tag_camada} - Padrão {at}x{fr}")
                 
                 lista_beb = ["Vazio"] + df_p[df_p['Categoria'] == cat_filtro]['Nome'].tolist()
                 beb_dict, av_dict = {}, {}
                 
-                cols_grid = st.columns(max(at, fr))
+                cols_grid = st.columns(5)
                 for i in range(at + fr):
                     pos = i + 1
-                    with cols_grid[i % len(cols_grid)]:
-                        st.markdown(f"**Posição {pos}**")
+                    with cols_grid[i]:
+                        st.markdown(f"**Pos {pos}**")
                         beb_dict[pos] = st.selectbox(f"Bebida", lista_beb, key=f"p_{pos}", label_visibility="collapsed")
-                        av_dict[pos] = st.number_input(f"Avulsos", 0, key=f"a_{pos}")
+                        av_dict[pos] = st.number_input(f"Unid", 0, key=f"a_{pos}")
                 
-                if st.button("FINALIZAR CAMADA E EMPILHAR", use_container_width=True):
-                    regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().second}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
+                if st.button(f"CONSOLIDAR NO PILAR {n_pilar}", use_container_width=True):
+                    regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().microsecond}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
                     if regs:
                         pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False)
-                        registrar_log(n_logado, f"Empilhou Camada {c_atual} no Pilar {n_pilar}")
+                        registrar_log(n_logado, f"Montou {tag_camada} no {n_pilar}")
+                        st.success(f"Camada empilhada com sucesso!")
                         st.rerun()
 
         st.markdown("---")
-        for pilar in df_pil['NomePilar'].unique():
-            st.markdown(f"### 📍 Pilar: {pilar}")
-            # MOSTRA DO TOPO PARA A BASE (Invertido para simular pilha real)
-            camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
-            
-            for cam in camadas:
-                dados_cam = df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)]
-                total_un_cam = 0
+        for pilar in sorted(df_pil['NomePilar'].unique()):
+            with st.container():
+                st.markdown(f"### 📍 Pilar: {pilar}")
+                # Mostra do Topo para a Base
+                camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
                 
-                with st.container():
+                for cam in camadas:
+                    dados_cam = df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)]
                     cor_b = "#58a6ff" if cam == max(camadas) else "#30363d"
                     tag = "🔝 TOPO" if cam == max(camadas) else ("🧱 BASE" if cam == 1 else f"📦 Camada {cam}")
-                    st.markdown(f"<small style='color:{cor_b}; font-weight:bold;'>{tag}</small>", unsafe_allow_html=True)
                     
-                    cols = st.columns(5)
+                    st.markdown(f"<small style='color:{cor_b}; font-weight:bold;'>{tag}</small>", unsafe_allow_html=True)
+                    cols_view = st.columns(5)
+                    
                     for _, r in dados_cam.iterrows():
                         u_p, _ = get_config_bebida(r['Bebida'], df_p)
-                        total_un_cam += (u_p + r['Avulsos'])
-                        with cols[int(r['Posicao'])-1]:
-                            st.markdown(f'<div style="background-color:#1c2128; padding:8px; border-radius:10px; border:2px solid {cor_b}; text-align:center; margin-bottom:5px;"><b style="font-size:0.8em; color:#e6edf3;">{r["Bebida"]}</b><br><span style="color:#238636; font-size:0.75em;">+{r["Avulsos"]} UN</span></div>', unsafe_allow_html=True)
+                        with cols_view[int(r['Posicao'])-1]:
+                            st.markdown(f'<div style="background-color:#1c2128; padding:8px; border-radius:10px; border:2px solid {cor_b}; text-align:center; min-height:60px;"><b style="font-size:0.75em; color:#e6edf3;">{r["Bebida"]}</b><br><span style="color:#238636; font-size:0.75em;">+{r["Avulsos"]}</span></div>', unsafe_allow_html=True)
                             if st.button("BAIXA", key=f"out_{r['ID']}", use_container_width=True):
                                 df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_p + r['Avulsos'])
                                 df_e.to_csv(DB_EST, index=False)
                                 df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False)
-                                registrar_log(n_logado, f"Saída Pilar {pilar}: {r['Bebida']}"); st.rerun()
-                    st.markdown(f"<p style='text-align:right; color:#8b949e; font-size:0.75em; margin-top:-5px;'>Subtotal: {total_un_cam} un</p>", unsafe_allow_html=True)
-                    if cam > 1: st.markdown("<div style='text-align:center; color:#30363d; margin-top:-10px; margin-bottom:10px;'>▼ apoiado sobre ▼</div>", unsafe_allow_html=True)
+                                registrar_log(n_logado, f"Saída {pilar}: {r['Bebida']}"); st.rerun()
+                    
+                    if cam > 1: st.markdown("<div style='text-align:center; color:#30363d; margin-top:-10px; margin-bottom:10px;'>▼</div>", unsafe_allow_html=True)
+                
+                if is_adm:
+                    if st.button(f"🗑️ DESMONTAR PILAR {pilar}", key=f"del_{pilar}"):
+                        df_pil[df_pil['NomePilar'] != pilar].to_csv(DB_PIL, index=False)
+                        st.rerun()
             st.divider()
 
     # --- 📦 ESTOQUE ---
