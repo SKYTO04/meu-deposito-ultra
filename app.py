@@ -35,6 +35,9 @@ st.markdown("""
         border: 1px solid #30363d; border-left: 6px solid #238636;
     }
     h1, h2, h3 { font-family: 'Inter', sans-serif; letter-spacing: -0.5px; }
+    [data-testid="stForm"] {
+        background-color: #161b22; border: 1px solid #30363d; border-radius: 15px; padding: 20px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -81,8 +84,8 @@ if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
 
 if not st.session_state['autenticado']:
-    st.markdown("<h1 style='text-align: center; color: #58a6ff;'>💎 PACAEMBU ULTRA G66</h1>", unsafe_allow_html=True)
-    col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+    st.markdown("<h1 style='text-align: center; color: #58a6ff; margin-top: 50px;'>💎 PACAEMBU ULTRA G66</h1>", unsafe_allow_html=True)
+    col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
     with col_l2:
         with st.form("login_prestige"):
             u_in = st.text_input("👤 Usuário")
@@ -91,7 +94,11 @@ if not st.session_state['autenticado']:
                 df_u = pd.read_csv(DB_USR)
                 valid = df_u[(df_u['user'] == u_in) & (df_u['senha'].astype(str) == s_in)]
                 if not valid.empty:
-                    st.session_state.update({'autenticado': True, 'u_l': u_in, 'u_n': valid['nome'].values[0], 'u_a': (valid['is_admin'].values[0] == 'SIM')})
+                    st.session_state.update({
+                        'autenticado': True, 'u_l': u_in, 
+                        'u_n': valid['nome'].values[0], 
+                        'u_a': (valid['is_admin'].values[0] == 'SIM')
+                    })
                     registrar_log(st.session_state['u_n'], "Login")
                     st.rerun()
                 else: st.error("Acesso negado.")
@@ -100,9 +107,18 @@ else:
     df_p, df_e, df_pil = pd.read_csv(DB_PROD), pd.read_csv(DB_EST), pd.read_csv(DB_PIL)
     df_cas, df_usr = pd.read_csv(DB_CAS), pd.read_csv(DB_USR)
 
-    # --- SIDEBAR ---
-    st.sidebar.markdown(f"<p style='text-align: center;'><b>💎 PACAEMBU G66</b><br>{n_logado}</p>", unsafe_allow_html=True)
+    # --- SIDEBAR COM FOTO ---
+    user_row = df_usr[df_usr['user'] == u_logado]
+    f_path = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+    if not user_row.empty:
+        raw = user_row['foto'].values[0]
+        if not pd.isna(raw) and raw != "": f_path = f"data:image/png;base64,{raw}"
+
+    st.sidebar.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='100' style='border-radius: 50%; border: 3px solid #238636; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown(f"<p style='text-align: center; font-size: 1.2em;'><b>{n_logado}</b></p>", unsafe_allow_html=True)
+    
     menu = st.sidebar.radio("NAVEGAÇÃO", ["🍻 PDV Romarinho", "🏗️ Pilares (Amarração)", "📦 Estoque Geral", "✨ Cadastro", "🍶 Controle de Cascos", "⚙️ Perfil"] + (["📊 Admin Financeiro", "📜 Logs", "👥 Equipe"] if is_adm else []))
+    
     if st.sidebar.button("🚪 SAIR"):
         st.session_state['autenticado'] = False; st.rerun()
 
@@ -160,52 +176,39 @@ else:
                             df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_padrao + r['Avulsos'])
                             df_e.to_csv(DB_EST, index=False); df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False); st.rerun()
 
-    # --- 📦 ESTOQUE (COM LÓGICA DE ALIMENTOS/LIMPEZA) ---
+    # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque Geral":
-        st.title("📦 Inventário e Ajustes")
+        st.title("📦 Inventário")
         st.dataframe(df_e, use_container_width=True, hide_index=True)
         st.subheader("⚙️ Movimentação Manual")
         sel_est = st.selectbox("Produto", df_p['Nome'].unique())
-        
-        # Lógica de interface baseada na categoria
         row_p = df_p[df_p['Nome'] == sel_est]
         cat_p = row_p['Categoria'].values[0] if not row_p.empty else ""
         u_b, t_t = get_config_bebida(sel_est, df_p)
-
         col_m1, col_m2, col_m3 = st.columns(3)
         tipo_mov = col_m1.radio("Operação", ["➕ ENTRADA", "➖ SAÍDA"])
-        
-        # Se for Alimento ou Limpeza, removemos a opção de fardos/engradados
         if cat_p in ["Alimentos", "Limpeza"]:
-            qtd_f = 0
-            qtd_u = col_m2.number_input("Quantidade (Unidades)", 0)
-            col_m3.info("Categoria de item unitário")
+            qtd_f, qtd_u = 0, col_m2.number_input("Quantidade (Unidades)", 0)
+            col_m3.info("Item Unitário")
         else:
-            qtd_f = col_m2.number_input(f"Qtd {t_t}s", 0)
-            qtd_u = col_m3.number_input("Qtd Avulsas", 0)
-        
-        if st.button("EXECUTAR MOVIMENTAÇÃO"):
+            qtd_f, qtd_u = col_m2.number_input(f"Qtd {t_t}s", 0), col_m3.number_input("Qtd Avulsas", 0)
+        if st.button("EXECUTAR"):
             total_un = (qtd_f * u_b) + qtd_u
             if "SAÍDA" in tipo_mov: df_e.loc[df_e['Nome'] == sel_est, 'Estoque_Total_Un'] -= total_un
             else: df_e.loc[df_e['Nome'] == sel_est, 'Estoque_Total_Un'] += total_un
-            df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Ajuste {sel_est} ({total_un}un)"); st.rerun()
+            df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Ajuste {sel_est}"); st.rerun()
 
     # --- ✨ CADASTRO ---
     elif menu == "✨ Cadastro":
-        st.title("✨ Gestão do Catálogo")
+        st.title("✨ Catálogo")
         with st.form("f_cad"):
             c1, c2, c3 = st.columns([2, 2, 1])
             fc = c1.selectbox("Categoria", ["Romarinho", "Refrigerante", "Cerveja Lata", "Alimentos", "Limpeza", "Outros"])
-            fn, fp = c2.text_input("Nome").upper(), c3.number_input("Preço Unitário", 0.0)
+            fn, fp = c2.text_input("Nome").upper(), c3.number_input("Preço", 0.0)
             if st.form_submit_button("CADASTRAR"):
                 if fn and fn not in df_p['Nome'].values:
                     pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
                     pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
-        st.divider()
-        sel_rem = st.selectbox("Deletar Produto", df_p['Nome'].unique())
-        if st.button("❌ EXCLUIR DEFINITIVAMENTE"):
-            df_p[df_p['Nome'] != sel_rem].to_csv(DB_PROD, index=False)
-            df_e[df_e['Nome'] != sel_rem].to_csv(DB_EST, index=False); st.rerun()
 
     # --- 🍶 CASCOS ---
     elif menu == "🍶 Controle de Cascos":
@@ -219,17 +222,80 @@ else:
             if st.button("BAIXA", key=f"bx_{r['ID']}"):
                 df_cas.at[i, 'Status'] = "PAGO"; df_cas.to_csv(DB_CAS, index=False); st.rerun()
 
-    # --- 📜 LOGS (LIMPEZA) ---
-    elif menu == "📜 Logs" and is_adm:
-        st.title("📜 Histórico")
-        st.dataframe(pd.read_csv(DB_LOG).sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
-        if st.button("🗑️ LIMPAR HISTÓRICO"):
-            pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, index=False); st.rerun()
+    # --- ⚙️ PERFIL (ATUALIZADO) ---
+    elif menu == "⚙️ Perfil":
+        st.title("⚙️ Meu Perfil")
+        col_p1, col_p2 = st.columns([1, 2])
+        
+        with col_p1:
+            st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636;'></div>", unsafe_allow_html=True)
+        
+        with col_p2:
+            st.subheader("Dados do Usuário")
+            st.info(f"**Nome:** {n_logado}\n\n**Usuário:** {u_logado}\n\n**Cargo:** {'Administrador' if is_adm else 'Colaborador'}")
+            
+            with st.expander("Atualizar Foto de Perfil"):
+                upload = st.file_uploader("Escolha uma imagem", type=['png', 'jpg', 'jpeg'])
+                if st.button("SALVAR NOVA FOTO") and upload:
+                    img = Image.open(upload)
+                    img = img.convert("RGB")
+                    img.thumbnail((300, 300))
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    img_b64 = base64.b64encode(buf.getvalue()).decode()
+                    df_usr.loc[df_usr['user'] == u_logado, 'foto'] = img_b64
+                    df_usr.to_csv(DB_USR, index=False)
+                    st.success("Foto atualizada! Reiniciando...")
+                    st.rerun()
 
-    # --- 📊 ADMIN FINANCEIRO ---
+    # --- 👥 EQUIPE (ATUALIZADO) ---
+    elif menu == "👥 Equipe" and is_adm:
+        st.title("👥 Gestão de Equipe")
+        
+        with st.expander("➕ CADASTRAR NOVO MEMBRO"):
+            with st.form("f_equipe"):
+                c1, c2, c3, c4 = st.columns(4)
+                new_u = c1.text_input("Usuário (Login)")
+                new_n = c2.text_input("Nome Completo")
+                new_s = c3.text_input("Senha", type="password")
+                new_a = c4.selectbox("Admin", ["NÃO", "SIM"])
+                if st.form_submit_button("ADICIONAR À EQUIPE"):
+                    if new_u and new_n and new_s:
+                        if new_u not in df_usr['user'].values:
+                            new_row = pd.DataFrame([[new_u, new_n, new_s, new_a, "0000-0000", ""]], columns=df_usr.columns)
+                            pd.concat([df_usr, new_row]).to_csv(DB_USR, index=False)
+                            registrar_log(n_logado, f"Cadastrou usuário {new_u}")
+                            st.success(f"{new_n} adicionado!")
+                            st.rerun()
+                        else: st.error("Usuário já existe.")
+
+        st.subheader("Membros Ativos")
+        for i, r in df_usr.iterrows():
+            with st.container():
+                ec1, ec2, ec3, ec4 = st.columns([1, 3, 2, 1])
+                # Foto pequena
+                u_foto = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                if not pd.isna(r['foto']) and r['foto'] != "": u_foto = f"data:image/png;base64,{r['foto']}"
+                
+                ec1.markdown(f"<img src='{u_foto}' width='50' style='border-radius: 50%;'>", unsafe_allow_html=True)
+                ec2.markdown(f"**{r['nome']}** ({r['user']})")
+                ec3.markdown(f"🛡️ Admin: `{r['is_admin']}`")
+                if r['user'] != 'admin': # Proteção para não deletar o master
+                    if ec4.button("❌", key=f"del_{r['user']}"):
+                        df_usr[df_usr['user'] != r['user']].to_csv(DB_USR, index=False)
+                        st.rerun()
+                st.divider()
+
+    # --- 📊 ADMIN/LOGS ---
     elif menu == "📊 Admin Financeiro" and is_adm:
         st.title("📊 Patrimônio")
         df_fin = pd.merge(df_e, df_p, on='Nome')
         df_fin['Subtotal'] = df_fin['Estoque_Total_Un'] * df_fin['Preco_Unitario']
         st.metric("VALOR EM ESTOQUE", f"R$ {df_fin['Subtotal'].sum():,.2f}")
         st.dataframe(df_fin, use_container_width=True, hide_index=True)
+    
+    elif menu == "📜 Logs" and is_adm:
+        st.title("📜 Histórico")
+        st.dataframe(pd.read_csv(DB_LOG).sort_values(by='Data', ascending=False), use_container_width=True, hide_index=True)
+        if st.button("🗑️ LIMPAR LOGS"):
+            pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(DB_LOG, index=False); st.rerun()
