@@ -52,7 +52,7 @@ TODOS_DBS = [DB_PROD, DB_EST, DB_PIL, DB_USR, DB_LOG, DB_CAS]
 def init_db():
     if not os.path.exists(DB_USR):
         pd.DataFrame([['admin', 'Gerente Mestre', '123', 'SIM', '0000-0000', '']], 
-                     columns=['user', 'nome', 'senha', 'is_admin', 'telefone', 'foto']).to_csv(DB_USR, index=False)
+                      columns=['user', 'nome', 'senha', 'is_admin', 'telefone', 'foto']).to_csv(DB_USR, index=False)
     arquivos = {
         DB_PROD: ['Categoria', 'Nome', 'Preco_Unitario'],
         DB_EST: ['Nome', 'Estoque_Total_Un'],
@@ -163,25 +163,30 @@ else:
                 for _, r in critico.iterrows(): st.warning(f"**{r['Nome']}**: {r['Estoque_Total_Un']} un.")
             else: st.success("Estoque em níveis saudáveis.")
 
-    # --- 🍻 PDV ROMARINHO ---
+    # --- 🍻 PDV ROMARINHO (FILTRADO APENAS PARA CATEGORIA ROMARINHO) ---
     elif menu == "🍻 PDV Romarinho":
-        st.title("🍻 PDV Rápido")
-        df_pdv = df_p[df_p['Categoria'].isin(["Romarinho", "Refrigerante", "Cerveja Lata"])]
-        for _, item in df_pdv.iterrows():
-            with st.container():
-                c1, c2, c3 = st.columns([3, 3, 4])
-                est_u_busca = df_e[df_e['Nome'] == item['Nome']]['Estoque_Total_Un'].values
-                est_u = int(est_u_busca[0]) if len(est_u_busca) > 0 else 0
-                u_b, t_t = get_config_bebida(item['Nome'], df_p)
-                c1.markdown(f"#### {item['Nome']}")
-                c2.metric("Saldo", f"{est_u//u_b} {t_t} | {est_u%u_b} un")
-                b1, b2 = c3.columns(2)
-                if b1.button(f"➖ {t_t.upper()}", key=f"e_{item['Nome']}"):
-                    df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= u_b
-                    df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda {t_t} {item['Nome']}"); st.rerun()
-                if b2.button("➖ UNID.", key=f"u_{item['Nome']}"):
-                    df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 1
-                    df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Unid {item['Nome']}"); st.rerun()
+        st.title("🍻 PDV Rápido - Romarinho")
+        # Ajuste aqui: Agora aparece somente a categoria "Romarinho"
+        df_pdv = df_p[df_p['Categoria'] == "Romarinho"]
+        
+        if df_pdv.empty:
+            st.info("Nenhum produto da categoria 'Romarinho' cadastrado.")
+        else:
+            for _, item in df_pdv.iterrows():
+                with st.container():
+                    c1, c2, c3 = st.columns([3, 3, 4])
+                    est_u_busca = df_e[df_e['Nome'] == item['Nome']]['Estoque_Total_Un'].values
+                    est_u = int(est_u_busca[0]) if len(est_u_busca) > 0 else 0
+                    u_b, t_t = get_config_bebida(item['Nome'], df_p)
+                    c1.markdown(f"#### {item['Nome']}")
+                    c2.metric("Saldo", f"{est_u//u_b} {t_t} | {est_u%u_b} un")
+                    b1, b2 = c3.columns(2)
+                    if b1.button(f"➖ {t_t.upper()}", key=f"e_{item['Nome']}"):
+                        df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= u_b
+                        df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda {t_t} {item['Nome']}"); st.rerun()
+                    if b2.button("➖ UNID.", key=f"u_{item['Nome']}"):
+                        df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 1
+                        df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Unid {item['Nome']}"); st.rerun()
 
     # --- 🏗️ PILARES ---
     elif menu == "🏗️ Pilares (Amarração)":
