@@ -153,7 +153,7 @@ if st.session_state["authentication_status"]:
         with tab1:
             with st.form("form_cascos"):
                 cli = st.text_input("Cliente").upper()
-                vas = st.selectbox("Vasilhame", ["Coca-Cola 1L", "Coca-Cola 2L", "Engradado", "Litrinho"])
+                vas = st.selectbox("Vasilhame", ["Coca-Cola 1L", "Coca-Cola 2L", "Engradado", "Romarinho"])
                 qtd = st.number_input("Quantidade", 1)
                 if st.form_submit_button("Registrar"):
                     nid = f"C{datetime.now().strftime('%M%S')}"
