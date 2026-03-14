@@ -50,105 +50,107 @@ if st.session_state["authentication_status"]:
     menu = st.sidebar.radio("Navegação", menu_opcoes)
     authenticator.logout('Sair', 'sidebar')
 
-    # --- ABA: CONFIGS (CADASTRO COM SOMA AUTOMÁTICA) ---
+    # --- ABA: CONFIGS (CORREÇÃO DA SINCRONIZAÇÃO) ---
     if menu == "⚙️ Configs" and sou_admin:
         st.title("⚙️ Gestão de Produtos")
         tab_cad, tab_edit = st.tabs(["➕ Cadastrar Novo", "✏️ Editar/Excluir"])
 
         with tab_cad:
-            categorias = ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante"]
-            
-            def atualizar_padrao():
-                c = st.session_state['nova_cat']
+            # FUNÇÃO QUE FORÇA A TROCA DOS VALORES
+            def reset_campos():
+                c = st.session_state['cat_selector']
                 if c == "Romarinho":
-                    st.session_state['txt_vol'] = "Engradados"
-                    st.session_state['un_por_vol'] = 24
+                    st.session_state['label_vol'] = "Engradados"
+                    st.session_state['un_fixo'] = 24
                 elif c == "Cerveja Lata":
-                    st.session_state['txt_vol'] = "Fardos"
-                    st.session_state['un_por_vol'] = 12
+                    st.session_state['label_vol'] = "Fardos"
+                    st.session_state['un_fixo'] = 12
                 elif c == "Refrigerante":
-                    st.session_state['txt_vol'] = "Fardos"
-                    st.session_state['un_por_vol'] = 6
+                    st.session_state['label_vol'] = "Fardos"
+                    st.session_state['un_fixo'] = 6
                 elif c == "Long Neck":
-                    st.session_state['txt_vol'] = "Fardos (Caixas)"
-                    st.session_state['un_por_vol'] = 24
+                    st.session_state['label_vol'] = "Fardos (Caixas)"
+                    st.session_state['un_fixo'] = 24
 
-            if 'un_por_vol' not in st.session_state:
-                st.session_state['un_por_vol'] = 24
-                st.session_state['txt_vol'] = "Engradados"
+            # Inicializa os estados se não existirem
+            if 'label_vol' not in st.session_state:
+                st.session_state['label_vol'] = "Engradados"
+                st.session_state['un_fixo'] = 24
 
-            cat = st.selectbox("Categoria", categorias, key='nova_cat', on_change=atualizar_padrao)
+            # Seletor de Categoria com a função de reset
+            cat = st.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante"], 
+                               key='cat_selector', on_change=reset_campos)
 
-            with st.form("form_cad_completo"):
+            with st.form("form_cadastro_v3"):
                 nome = st.text_input("Nome da Bebida").upper()
                 
                 col1, col2 = st.columns(2)
-                qtd_vol = col1.number_input(f"Qtd de {st.session_state['txt_vol']}", min_value=0, step=1)
-                qtd_un = col2.number_input("Unidades Avulsas", min_value=0, step=1)
+                # Agora o 'value' desses campos está amarrado ao session_state
+                q_vol = col1.number_input(f"Qtd Inicial ({st.session_state['label_vol']})", min_value=0, step=1)
+                q_un = col2.number_input("Qtd Inicial (Unidades Avulsas)", min_value=0, step=1)
                 
-                un_fardo = st.number_input(f"Unidades por {st.session_state['txt_vol']} (Padrão)", value=st.session_state['un_por_vol'])
+                u_por_fardo = st.number_input(f"Unidades por {st.session_state['label_vol']}", 
+                                             value=st.session_state['un_fixo'])
                 
                 custo = st.number_input("Custo Unitário", format="%.2f")
                 venda = st.number_input("Venda Unitária", format="%.2f")
                 
-                total_inicial = (qtd_vol * un_fardo) + qtd_un
-                st.write(f"📊 **Estoque Inicial Total: {total_inicial} unidades**")
+                total_calc = (q_vol * u_por_fardo) + q_un
+                st.info(f"💡 O estoque começará com: **{total_calc} unidades**")
 
                 if st.form_submit_button("Salvar Produto"):
                     if nome:
-                        df_e = pd.read_csv(DB_FILE)
-                        novo = pd.DataFrame([[cat, "GERAL", nome, total_inicial, un_fardo, 1, 12, custo, venda]], columns=df_e.columns)
-                        pd.concat([df_e, novo]).to_csv(DB_FILE, index=False)
-                        registrar_log(nome_logado, f"CADASTRO: {nome} ({total_inicial} un)")
-                        st.success(f"{nome} salvo com sucesso!")
+                        df_db = pd.read_csv(DB_FILE)
+                        novo_p = pd.DataFrame([[cat, "GERAL", nome, total_calc, u_por_fardo, 1, 12, custo, venda]], columns=df_db.columns)
+                        pd.concat([df_db, novo_p]).to_csv(DB_FILE, index=False)
+                        registrar_log(nome_logado, f"CADASTRO: {nome} ({total_calc} un)")
+                        st.success("Cadastrado!")
                         st.rerun()
 
         with tab_edit:
-            df_edit = pd.read_csv(DB_FILE)
-            if not df_edit.empty:
-                prod = st.selectbox("Selecione o produto", df_edit['Bebida'].tolist())
-                dados = df_edit[df_edit['Bebida'] == prod].iloc[0]
-                with st.form("edit_form"):
-                    n_nome = st.text_input("Nome", value=dados['Bebida']).upper()
-                    n_fardo = st.number_input("Unidades por Volume", value=int(dados['Fardo']))
-                    if st.form_submit_button("Atualizar"):
-                        idx = df_edit[df_edit['Bebida'] == prod].index
-                        df_edit.loc[idx, ['Bebida', 'Fardo']] = [n_nome, n_fardo]
-                        df_edit.to_csv(DB_FILE, index=False)
+            df_ed = pd.read_csv(DB_FILE)
+            if not df_ed.empty:
+                escolha = st.selectbox("Escolha o produto", df_ed['Bebida'].tolist())
+                d = df_ed[df_ed['Bebida'] == escolha].iloc[0]
+                with st.form("ed_rapida"):
+                    novo_n = st.text_input("Nome", value=d['Bebida']).upper()
+                    novo_f = st.number_input("Unidades no Volume", value=int(d['Fardo']))
+                    if st.form_submit_button("Salvar Alterações"):
+                        df_ed.loc[df_ed['Bebida'] == escolha, ['Bebida', 'Fardo']] = [novo_n, novo_f]
+                        df_ed.to_csv(DB_FILE, index=False)
                         st.success("Atualizado!")
                         st.rerun()
 
-    # --- ABA: VENDAS/CARGAS (MOVIMENTAÇÃO COM OPÇÃO DE AVULSO) ---
+    # --- ABA: VENDAS/CARGAS (SOMA CRUZADA DE FARDO + UNIDADE) ---
     elif menu == "🔄 Vendas/Cargas":
-        st.title("🔄 Movimentação")
-        df_e = pd.read_csv(DB_FILE)
-        if not df_e.empty:
-            with st.form("mov_form"):
-                item = st.selectbox("Bebida", df_e['Bebida'].unique())
-                op = st.radio("Ação", ["Venda", "Carga", "Quebra"], horizontal=True)
+        st.title("🔄 Movimentar Estoque")
+        df_v = pd.read_csv(DB_FILE)
+        if not df_v.empty:
+            with st.form("mov_cruzada"):
+                item_v = st.selectbox("Selecione a Bebida", df_v['Bebida'].unique())
+                acao_v = st.radio("Operação", ["Venda", "Carga", "Quebra"], horizontal=True)
                 
-                dados_item = df_e[df_e['Bebida'] == item].iloc[0]
-                val_fardo = int(dados_item['Fardo'])
-                txt_tipo = "Engradados" if dados_item['Categoria'] == "Romarinho" else "Fardos"
+                # Busca as regras desse item
+                regra = df_v[df_v['Bebida'] == item_v].iloc[0]
+                v_fardo = int(regra['Fardo'])
+                t_vol = "Engradado" if regra['Categoria'] == "Romarinho" else "Fardo"
 
-                c1, c2 = st.columns(2)
-                m_vol = c1.number_input(f"Qtd de {txt_tipo}", min_value=0, step=1)
-                m_un = c2.number_input("Unidades Avulsas", min_value=0, step=1)
+                col_a, col_b = st.columns(2)
+                in_vol = col_a.number_input(f"Qtd de {t_vol}s", min_value=0, step=1)
+                in_un = col_b.number_input("Unidades Avulsas", min_value=0, step=1)
                 
-                total_acao = (m_vol * val_fardo) + m_un
-                st.markdown(f"### Total: {total_acao} unidades")
+                soma_total = (in_vol * v_fardo) + in_un
+                st.warning(f"Total da operação: {soma_total} unidades")
 
                 if st.form_submit_button("Confirmar"):
-                    if total_acao > 0:
-                        idx = df_e[df_e['Bebida'] == item].index
-                        if op == "Venda" or op == "Quebra":
-                            df_e.loc[idx, 'Qtd'] -= total_acao
-                        else:
-                            df_e.loc[idx, 'Qtd'] += total_acao
+                    if soma_total > 0:
+                        idx = df_v[df_v['Bebida'] == item_v].index
+                        if acao_v == "Carga": df_v.loc[idx, 'Qtd'] += soma_total
+                        else: df_v.loc[idx, 'Qtd'] -= soma_total
                         
-                        df_e.to_csv(DB_FILE, index=False)
-                        registrar_log(nome_logado, f"{op.upper()}: {total_acao} un de {item}")
-                        st.success("Estoque Atualizado!")
+                        df_v.to_csv(DB_FILE, index=False)
+                        registrar_log(nome_logado, f"{acao_v.upper()}: {soma_total} un de {item_v}")
+                        st.success("Estoque atualizado!")
                         st.rerun()
 
     # --- VISUALIZAÇÃO ---
@@ -156,13 +158,17 @@ if st.session_state["authentication_status"]:
         st.title("📦 Romarinhos")
         df_e = pd.read_csv(DB_FILE)
         for _, r in df_e[df_e['Categoria'] == 'Romarinho'].iterrows():
-            st.info(f"**{r['Bebida']}** | {int(r['Qtd'])} un | {int(r['Qtd']//r['Fardo'])} Engradados e {int(r['Qtd']%r['Fardo'])} un")
+            st.info(f"**{r['Bebida']}** | Total: {int(r['Qtd'])} un ({int(r['Qtd']//r['Fardo'])} Eng. e {int(r['Qtd']%r['Fardo'])} un)")
 
     elif menu == "🍾 Long Neck":
         st.title("🍾 Long Necks")
         df_e = pd.read_csv(DB_FILE)
         for _, r in df_e[df_e['Categoria'] == 'Long Neck'].iterrows():
-            st.info(f"**{r['Bebida']}** | {int(r['Qtd'])} un | {int(r['Qtd']//r['Fardo'])} Caixas e {int(r['Qtd']%r['Fardo'])} un")
+            st.info(f"**{r['Bebida']}** | Total: {int(r['Qtd'])} un ({int(r['Qtd']//r['Fardo'])} Caixas e {int(r['Qtd']%r['Fardo'])} un)")
+
+    elif menu == "📜 Histórico (Adm)" and sou_admin:
+        st.title("📜 Histórico")
+        st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1], use_container_width=True)
 
 elif st.session_state["authentication_status"] is False:
-    st.error('Login/Senha incorretos.')
+    st.error('Login incorreto.')
