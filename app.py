@@ -7,13 +7,13 @@ import os
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v38) ---
-DB_PRODUTOS = "produtos_v38.csv"
-DB_ESTOQUE = "estoque_v38.csv"
-PILAR_ESTRUTURA = "pilares_v38.csv"
-USERS_FILE = "usuarios_v38.csv"
-LOG_FILE = "historico_v38.csv"
-CASCOS_FILE = "cascos_v38.csv"
+# --- 2. BANCO DE DADOS (v39) ---
+DB_PRODUTOS = "produtos_v39.csv"
+DB_ESTOQUE = "estoque_v39.csv"
+PILAR_ESTRUTURA = "pilares_v39.csv"
+USERS_FILE = "usuarios_v39.csv"
+LOG_FILE = "historico_v39.csv"
+CASCOS_FILE = "cascos_v39.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
@@ -43,7 +43,10 @@ def obter_dados_categoria(nome_produto, df_produtos):
     busca = df_produtos[df_produtos['Nome'] == nome_produto]
     if not busca.empty:
         cat = busca['Categoria'].values[0]
-        if cat == "Romarinho": return 24, "Engradado"
+        # REGRA: SÓ ROMARINHO É ENGRADADO
+        if cat == "Romarinho": 
+            return 24, "Engradado"
+        # OS DEMAIS SÃO FARDOS COM SUAS QUANTIDADES
         if cat == "Long Neck": return 24, "Fardo"
         if cat == "Cerveja Lata": return 12, "Fardo"
         if cat == "Refrigerante": return 6, "Fardo"
@@ -77,8 +80,7 @@ if st.session_state["authentication_status"]:
 
     # --- ABA: GESTÃO DE PILARES ---
     if menu == "🏗️ Gestão de Pilares":
-        st.title("🏗️ Gestão de Pilares")
-        # (Lógica de montagem mantida...)
+        st.title("🏗️ Controle de Pilares")
         
         for np in df_pilar['NomePilar'].unique():
             with st.expander(f"📍 {np}", expanded=True):
@@ -95,7 +97,6 @@ if st.session_state["authentication_status"]:
                             
                             if st.session_state.get(f"ask_{row['ID']}", False):
                                 with st.form(f"f{row['ID']}"):
-                                    # MUDANÇA AQUI: NOME DINÂMICO (ENGRADADO OU FARDO)
                                     q_auto, termo = obter_dados_categoria(row['Bebida'], df_prod)
                                     q_f = st.number_input(f"Unidades no {termo.lower()}?", value=q_auto)
                                     if st.form_submit_button("Confirmar Baixa"):
@@ -103,16 +104,15 @@ if st.session_state["authentication_status"]:
                                         df_e.loc[df_e['Nome'] == row['Bebida'], 'Estoque_Total_Un'] -= total
                                         df_e.to_csv(DB_ESTOQUE, index=False)
                                         df_pilar[df_pilar['ID'] != row['ID']].to_csv(PILAR_ESTRUTURA, index=False)
-                                        registrar_log(nome_logado, f"Retirou {row['Bebida']} ({total}un)")
+                                        registrar_log(nome_logado, f"Baixa: {row['Bebida']} ({total}un)")
                                         st.rerun()
 
-    # --- ABA: ENTRADA DE ESTOQUE (COM TERMO DINÂMICO) ---
+    # --- ABA: ENTRADA DE ESTOQUE ---
     elif menu == "📦 Entrada de Estoque":
         st.title("📦 Entrada de Mercadoria")
         if not df_prod.empty:
-            with st.form("ent_v38"):
+            with st.form("ent_v39"):
                 p_sel = st.selectbox("Selecione o Produto", df_prod['Nome'].unique())
-                # BUSCA SE É ENGRADADO OU FARDO
                 un_auto, termo = obter_dados_categoria(p_sel, df_prod)
                 
                 c1, c2 = st.columns(2)
@@ -125,7 +125,7 @@ if st.session_state["authentication_status"]:
                     df_e.loc[df_e['Nome'] == p_sel, 'Estoque_Total_Un'] += total
                     df_e.to_csv(DB_ESTOQUE, index=False)
                     registrar_log(nome_logado, f"Entrada: {total}un de {p_sel}")
-                    st.success("Estoque Atualizado!")
+                    st.success(f"Estoque de {p_sel} atualizado com sucesso!")
                     st.rerun()
         st.dataframe(df_e)
 
@@ -145,7 +145,7 @@ if st.session_state["authentication_status"]:
         
         st.subheader("Lista de Produtos")
         for i, row in df_prod.iterrows():
-            cc1, cc2, cc3 = st.columns([4, 3, 1]) # LINHA CORRIGIDA
+            cc1, cc2, cc3 = st.columns([4, 3, 1])
             cc1.write(f"**{row['Nome']}** ({row['Categoria']})")
             cc2.write(f"R$ {row['Preco_Unitario']:.2f}")
             if cc3.button("Excluir", key=f"del_{row['Nome']}"):
@@ -154,7 +154,7 @@ if st.session_state["authentication_status"]:
                 st.rerun()
 
     # --- ABAS ADM (Financeiro, Histórico, Equipe, Cascos) ---
-    # (Mantidas conforme as versões anteriores...)
+    # ... código mantido ...
 
 elif st.session_state["authentication_status"] is False:
     st.error('Login incorreto.')
