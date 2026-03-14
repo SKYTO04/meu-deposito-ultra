@@ -11,18 +11,18 @@ st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout
 DB_FILE = "estoque_financeiro.csv"
 USERS_FILE = "usuarios_v2.csv"
 LOG_FILE = "historico_atividades.csv"
-PILAR_FILE = "organizacao_pilares.csv" # Novo arquivo para salvar as pilhas
+PILAR_ESTRUTURA = "estrutura_pilares.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
-        pd.DataFrame([['admin', 'Gerente', 'admin123', 'SIM']], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, index=False)
+        pd.DataFrame([['admin', 'Gerente Mestre', 'admin123', 'SIM']], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, index=False)
     if not os.path.exists(DB_FILE):
         pd.DataFrame(columns=['Categoria', 'Bebida', 'Qtd', 'Fardo', 'Custo', 'Venda']).to_csv(DB_FILE, index=False)
     if not os.path.exists(LOG_FILE):
         pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, index=False)
-    if not os.path.exists(PILAR_FILE):
-        # Armazena: Qual Pilar, Qual Bebida, Quantos Fardos, Ordem (baixo para cima)
-        pd.DataFrame(columns=['Pilar', 'Bebida', 'Qtd_Fardo', 'Ordem']).to_csv(PILAR_FILE, index=False)
+    if not os.path.exists(PILAR_ESTRUTURA):
+        # Nome do Pilar, Camada (1, 2...), Posicao (1-5), Bebida
+        pd.DataFrame(columns=['NomePilar', 'Camada', 'Posicao', 'Bebida']).to_csv(PILAR_ESTRUTURA, index=False)
 
 init_files()
 
@@ -40,97 +40,116 @@ if st.session_state["authentication_status"]:
     sou_admin = df_users[df_users['user'] == st.session_state["username"]]['is_admin'].values[0] == 'SIM'
 
     st.sidebar.title(f"👤 {nome_logado}")
-    menu = st.sidebar.radio("Navegação", ["🏗️ Mapa de Pilares", "📦 Romarinho", "🍾 Long Neck", "🔄 Movimentar/Montar Pilar", "⚙️ Configs"])
+    menu = st.sidebar.radio("Navegação", ["🏗️ Criar/Ver Pilares", "📦 Romarinho", "🔄 Vendas/Cargas", "🍶 Cascos", "📜 Histórico", "⚙️ Configs"])
     authenticator.logout('Sair', 'sidebar')
 
-    # --- ABA: MOVIMENTAÇÃO E MONTAGEM DE PILAR ---
-    if menu == "🔄 Movimentar/Montar Pilar":
-        st.title("🏗️ Montagem de Pilar e Carga")
+    # --- ABA: CONSTRUTOR DE PILARES VISUAL ---
+    if menu == "🏗️ Criar/Ver Pilares":
+        st.title("🏗️ Construtor Visual de Pilares")
         
-        df_p = pd.read_csv(PILAR_FILE)
         df_e = pd.read_csv(DB_FILE)
-        
-        tab1, tab2 = st.tabs(["🏗️ Montar/Adicionar ao Pilar", "❌ Resetar Pilar"])
-        
-        with tab1:
-            with st.form("form_pilar"):
-                pilar_nome = st.selectbox("Qual Pilar (Localização)?", ["Pilar A", "Pilar B", "Pilar C", "Fundo 1", "Fundo 2"])
-                bebida_p = st.selectbox("Bebida", df_e['Bebida'].unique())
-                qtd_f = st.number_input("Quantos Fardos/Engradados colocar em cima?", min_value=1, step=1)
+        df_p = pd.read_csv(PILAR_ESTRUTURA)
+
+        with st.expander("➕ Criar Novo Pilar ou Adicionar Camada"):
+            nome_novo_pilar = st.text_input("Nome do Pilar (ex: Pilar Coca, Pilar Conquista)").upper()
+            
+            if nome_novo_pilar:
+                # Verifica em qual camada estamos
+                camadas_existentes = df_p[df_p['NomePilar'] == nome_novo_pilar]['Camada']
+                camada_atual = 1 if camadas_existentes.empty else camadas_existentes.max() + 1
                 
-                st.info("💡 Lembre da amarração: 2 atrás/3 frente ou 3 atrás/2 frente!")
+                st.subheader(f"Arrumação da {camada_atual}ª Camada")
+                st.write("Selecione a bebida e clique no **+** para colocar no lugar:")
                 
-                if st.form_submit_button("Adicionar ao Topo do Pilar"):
-                    # Calcula ordem (pega a maior ordem atual do pilar e soma 1)
-                    ordem_atual = df_p[df_p['Pilar'] == pilar_nome]['Ordem'].max()
-                    nova_ordem = 1 if pd.isna(ordem_atual) else ordem_atual + 1
+                bebida_selecionada = st.selectbox("Bebida para esta camada", df_e['Bebida'].unique())
+                
+                # Interface Visual da Amarração (3 atrás, 2 na frente ou vice-versa)
+                # Vamos usar colunas para simular o espaço físico
+                col1, col2, col3 = st.columns(3)
+                posicoes = {}
+                
+                st.markdown("### Atrás")
+                c1, c2, c3 = st.columns(3)
+                posicoes[1] = c1.checkbox("➕ Pos 1", key="p1")
+                posicoes[2] = c2.checkbox("➕ Pos 2", key="p2")
+                posicoes[3] = c3.checkbox("➕ Pos 3", key="p3")
+                
+                st.markdown("### Frente")
+                f1, f2, f3 = st.columns(3)
+                posicoes[4] = f1.checkbox("➕ Pos 4", key="p4")
+                posicoes[5] = f2.checkbox("➕ Pos 5", key="p5")
+
+                if st.button("Salvar Camada no Pilar"):
+                    novos_registros = []
+                    for pos, marcado in posicoes.items():
+                        if marcado:
+                            novos_registros.append([nome_novo_pilar, camada_atual, pos, bebida_selecionada])
                     
-                    novo_bloco = pd.DataFrame([[pilar_nome, bebida_p, qtd_f, nova_ordem]], columns=df_p.columns)
-                    pd.concat([df_p, novo_bloco]).to_csv(PILAR_FILE, index=False)
+                    if novos_registros:
+                        df_novo = pd.DataFrame(novos_registros, columns=df_p.columns)
+                        pd.concat([df_p, df_novo]).to_csv(PILAR_ESTRUTURA, index=False)
+                        st.success(f"Camada {camada_atual} salva!")
+                        st.rerun()
+
+        # --- EXIBIÇÃO DOS PILARES CRIADOS ---
+        st.divider()
+        if not df_p.empty:
+            pilares_nomes = df_p['NomePilar'].unique()
+            for p_nome in pilares_nomes:
+                st.header(f"📍 {p_nome}")
+                # Mostrar da última camada para a primeira (topo para baixo)
+                camadas = sorted(df_p[df_p['NomePilar'] == p_nome]['Camada'].unique(), reverse=True)
+                
+                for c in camadas:
+                    st.write(f"**{c}ª Camada**")
+                    dados_c = df_p[(df_p['NomePilar'] == p_nome) & (df_p['Camada'] == c)]
                     
-                    # Atualiza estoque geral
-                    regra = df_e[df_e['Bebida'] == bebida_p].iloc[0]
-                    total_un = qtd_f * int(regra['Fardo'])
-                    df_e.loc[df_e['Bebida'] == bebida_p, 'Qtd'] += total_un
-                    df_e.to_csv(DB_FILE, index=False)
-                    
-                    st.success(f"Adicionado {qtd_f} fardos de {bebida_p} no topo do {pilar_nome}!")
+                    # Desenho visual da camada
+                    grid = st.columns(5)
+                    for p_idx in range(1, 6):
+                        item = dados_c[dados_c['Posicao'] == p_idx]
+                        with grid[p_idx-1]:
+                            if not item.empty:
+                                st.markdown(f"""<div style="background-color:#1E1E1E; border:1px solid #444; padding:5px; text-align:center; border-radius:5px; font-size:12px;">{item['Bebida'].values[0]}</div>""", unsafe_allow_html=True)
+                            else:
+                                st.markdown("""<div style="color:#333; text-align:center;">(vazio)</div>""", unsafe_allow_html=True)
+                
+                if st.button(f"🗑️ Desmanchar {p_nome}", key=f"del_{p_nome}"):
+                    df_p = df_p[df_p['NomePilar'] != p_nome]
+                    df_p.to_csv(PILAR_ESTRUTURA, index=False)
                     st.rerun()
 
-        with tab2:
-            st.warning("Isso remove todos os itens do pilar selecionado no sistema.")
-            pilar_del = st.selectbox("Pilar para limpar", df_p['Pilar'].unique())
-            if st.button("Limpar Pilar"):
-                df_p = df_p[df_p['Pilar'] != pilar_del]
-                df_p.to_csv(PILAR_FILE, index=False)
-                st.success(f"{pilar_del} esvaziado!")
-                st.rerun()
-
-    # --- ABA: MAPA DE PILARES (VISÃO VISUAL) ---
-    elif menu == "🏗️ Mapa de Pilares":
-        st.title("📊 Visão Real do Estoque (Pilares)")
-        df_p = pd.read_csv(PILAR_FILE)
-        
-        if df_p.empty:
-            st.info("Nenhum pilar montado ainda.")
-        else:
-            pilares = df_p['Pilar'].unique()
-            cols = st.columns(len(pilares))
-            
-            for i, p in enumerate(pilares):
-                with cols[i]:
-                    st.subheader(p)
-                    # Pega itens do pilar e inverte a ordem (para mostrar o topo em cima)
-                    itens = df_p[df_p['Pilar'] == p].sort_values(by='Ordem', ascending=False)
-                    
-                    for _, row in itens.iterrows():
-                        # Desenha o bloco físico
-                        cor = "#007bff" if "NORMAL" in row['Bebida'] else "#dc3545"
-                        st.markdown(f"""
-                            <div style="background-color: {cor}; padding: 10px; border: 2px solid white; border-radius: 5px; text-align: center; margin-bottom: 5px; color: white;">
-                                <b>{row['Qtd_Fardo']} Fardos</b><br>{row['Bebida']}
-                            </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown("<div style='text-align:center; font-weight:bold;'>⬇️ CHÃO ⬇️</div>", unsafe_allow_html=True)
-
-    # --- DEMAIS ABAS ---
-    elif menu == "📦 Romarinho":
-        st.title("📦 Romarinhos")
-        df = pd.read_csv(DB_FILE)
-        for _, r in df[df['Categoria'] == 'Romarinho'].iterrows():
-            st.info(f"**{r['Bebida']}** | Total: {int(r['Qtd'])} un")
-
+    # --- ABA: CONFIGS (Cadastro e Nomes) ---
     elif menu == "⚙️ Configs":
         st.title("⚙️ Cadastro")
         cat = st.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante"])
-        with st.form("cad"):
-            nome = st.text_input("Nome (ex: COCA NORMAL)").upper()
-            fardo = st.number_input("Unidades por Fardo", value=6 if cat=="Refrigerante" else 24)
+        
+        # Lógica automática de nomes e valores que você pediu
+        label = "Engradado" if cat == "Romarinho" else "Fardo"
+        valor_padrao = 24 if cat in ["Romarinho", "Long Neck"] else (12 if cat == "Cerveja Lata" else 6)
+        
+        with st.form("cad_bebida"):
+            nome_b = st.text_input("Nome da Bebida").upper()
+            u_fardo = st.number_input(f"Unidades por {label}", value=valor_padrao)
             if st.form_submit_button("Salvar"):
-                df = pd.read_csv(DB_FILE)
-                novo = pd.DataFrame([[cat, nome, 0, fardo, 0.0, 0.0]], columns=df.columns)
-                pd.concat([df, novo]).to_csv(DB_FILE, index=False)
+                df_e = pd.read_csv(DB_FILE)
+                pd.concat([df_e, pd.DataFrame([[cat, nome_b, 0, u_fardo, 0.0, 0.0]], columns=df_e.columns)]).to_csv(DB_FILE, index=False)
+                st.success("Cadastrado!")
                 st.rerun()
+
+    # --- MANTER AS OUTRAS ABAS (CASCOS, HISTORICO, ETC) ---
+    elif menu == "🍶 Cascos":
+        st.title("🍶 Cascos")
+        st.dataframe(pd.read_csv(CASCOS_FILE))
+    
+    elif menu == "📜 Histórico":
+        st.title("📜 Histórico")
+        st.table(pd.read_csv(LOG_FILE).iloc[::-1])
+
+    elif menu == "📦 Romarinho":
+        st.title("📦 Romarinhos")
+        df_r = pd.read_csv(DB_FILE)
+        st.dataframe(df_r[df_r['Categoria'] == 'Romarinho'])
 
 elif st.session_state["authentication_status"] is False:
     st.error('Login incorreto.')
