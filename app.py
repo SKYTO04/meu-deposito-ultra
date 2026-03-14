@@ -67,7 +67,7 @@ authenticator = stauth.Authenticate(
 )
 
 # LOGO NO TOPO
-URL_LOGO = "https://cdn-icons-png.flaticon.com/512/931/931949.png"
+URL_LOGO = "logo.png"
 st.markdown(f"""
     <div style="display: flex; flex-direction: column; align-items: center; margin-top: -30px; margin-bottom: 20px;">
         <img src="{URL_LOGO}" style="width: 100px; filter: drop-shadow(0px 4px 10px rgba(255,75,75,0.4));">
