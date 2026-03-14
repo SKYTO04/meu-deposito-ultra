@@ -8,19 +8,13 @@ import io
 import base64
 
 # =================================================================
-# 1. SETUP DE INTERFACE E INICIALIZAÇÃO (PREVINE KEYERROR)
+# 1. SETUP DE INTERFACE E SEGURANÇA TOTAL
 # =================================================================
-st.set_page_config(page_title="PACAEMBU G86 - OMNI PRESTIGE", page_icon="🏦", layout="wide")
+st.set_page_config(page_title="PACAEMBU G85 - OMNI PRESTIGE", page_icon="🏦", layout="wide")
 
-# Inicialização Blindada do Session State
-if 'auth' not in st.session_state:
-    st.session_state['auth'] = False
-if 'nome' not in st.session_state:
-    st.session_state['nome'] = ''
-if 'foto' not in st.session_state:
-    st.session_state['foto'] = ''
-if 'user' not in st.session_state:
-    st.session_state['user'] = ''
+# Inicialização Blindada (Evita qualquer KeyError)
+for key, val in {'auth': False, 'nome': '', 'foto': '', 'user': '', 'role': 'OPERADOR'}.items():
+    if key not in st.session_state: st.session_state[key] = val
 
 st.markdown("""
     <style>
@@ -42,9 +36,9 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (V86 DEFINITIVO)
+# 2. BANCO DE DADOS (V86 FINAL)
 # =================================================================
-V = "v86_definitivo"
+V = "v86_final"
 DB = {
     'prod': f'prod_{V}.csv', 'est': f'est_{V}.csv', 'vendas': f'vendas_{V}.csv',
     'cascos': f'cas_{V}.csv', 'ec': f'ec_{V}.csv', 'pi': f'pi_{V}.csv', 'usr': f'usr_{V}.csv'
@@ -58,15 +52,13 @@ def init_db():
         'cascos': ['ID', 'Data', 'Cliente', 'Tipo', 'Qtd', 'Status', 'Resp'],
         'ec': ['Tipo', 'Qtd'],
         'pi': ['ID', 'Pilar', 'Camada', 'Pos', 'Bebida', 'Avulsos'],
-        'usr': ['user', 'nome', 'senha', 'foto']
+        'usr': ['user', 'nome', 'senha', 'foto', 'cargo']
     }
     for key, path in DB.items():
         if not os.path.exists(path):
             df = pd.DataFrame(columns=structs[key])
-            if key == 'ec':
-                df = pd.DataFrame([["Coca 1L", 0], ["Coca 2L", 0], ["Engradado", 0], ["Litrinho", 0]], columns=['Tipo', 'Qtd'])
-            if key == 'usr':
-                df = pd.DataFrame([['admin', 'GERENTE MESTRE', '123', '']], columns=structs[key])
+            if key == 'ec': df = pd.DataFrame([["Coca 1L", 0], ["Engradado", 0]], columns=['Tipo', 'Qtd'])
+            if key == 'usr': df = pd.DataFrame([['admin', 'GERENTE', '123', '', 'ADMIN']], columns=structs[key])
             df.to_csv(path, index=False)
 
 init_db()
@@ -78,7 +70,7 @@ def get_img_64(img_file):
     return base64.b64encode(buffered.getvalue()).decode()
 
 # =================================================================
-# 3. LÓGICA DE ACESSO
+# 3. LOGIN
 # =================================================================
 if not st.session_state['auth']:
     _, col_login, _ = st.columns([1, 1, 1])
@@ -91,114 +83,127 @@ if not st.session_state['auth']:
                 df_u = pd.read_csv(DB['usr'])
                 res = df_u[(df_u['user'] == u) & (df_u['senha'].astype(str) == s)]
                 if not res.empty:
-                    st.session_state['auth'] = True
-                    st.session_state['nome'] = res['nome'].values[0]
-                    st.session_state['user'] = u
-                    st.session_state['foto'] = str(res['foto'].values[0]) if pd.notna(res['foto'].values[0]) else ''
+                    st.session_state.update({
+                        'auth': True, 'nome': res['nome'].values[0], 'user': u,
+                        'foto': str(res['foto'].values[0]) if pd.notna(res['foto'].values[0]) else '',
+                        'role': res['cargo'].values[0] if 'cargo' in res.columns else 'OPERADOR'
+                    })
                     st.rerun()
                 else: st.error("Incorreto.")
 else:
-    # Carga Global
     df_p, df_e, df_v = pd.read_csv(DB['prod']), pd.read_csv(DB['est']), pd.read_csv(DB['vendas'])
     df_ec, df_c, df_pi = pd.read_csv(DB['ec']), pd.read_csv(DB['cascos']), pd.read_csv(DB['pi'])
 
-    # --- SIDEBAR (SEM ERRO DE KEY) ---
+    # --- SIDEBAR ---
     with st.sidebar:
         st.markdown('<div style="text-align: center;">', unsafe_allow_html=True)
         f = st.session_state.get('foto', '')
         if f and len(f) > 50:
             st.markdown(f'<img src="data:image/png;base64,{f}" class="profile-img" width="160">', unsafe_allow_html=True)
-        else:
-            st.warning("Sem Foto")
-        st.markdown(f"### {st.session_state.get('nome', 'Usuário')}")
+        st.markdown(f"### {st.session_state['nome']}\n`{st.session_state['role']}`")
         st.markdown('</div>', unsafe_allow_html=True)
         
-        menu = st.radio("MENU", ["📊 DASHBOARD", "📦 ESTOQUE", "🍻 PDV RÁPIDO", "🏗️ PILARES", "🍶 CASCOS", "🕒 HISTÓRICO BRUTO", "⚙️ CONFIGS"])
-        
+        menu_items = ["📊 DASHBOARD", "📦 ESTOQUE", "🍻 PDV RÁPIDO", "🏗️ PILARES", "🍶 CASCOS", "🕒 HISTÓRICO BRUTO", "⚙️ CONFIGURAÇÕES"]
+        menu = st.radio("MENU", menu_items)
         if st.button("SAIR"):
             st.session_state['auth'] = False
             st.rerun()
 
     # =================================================================
-    # MÓDULO: HISTÓRICO BRUTO (O QUE VOCÊ PEDIU)
+    # MÓDULOS DE ACESSO RESTRITO
     # =================================================================
-    if menu == "🕒 HISTÓRICO BRUTO":
-        st.title("🕒 Histórico de Transações")
-        
-        col_f1, col_f2 = st.columns(2)
-        busca_p = col_f1.text_input("Buscar Produto").upper()
-        busca_u = col_f2.text_input("Buscar Operador").upper()
-        
+    if menu == "📊 DASHBOARD":
+        if st.session_state['role'] == "ADMIN":
+            st.title("📊 Resumo Financeiro")
+            df_f = pd.merge(df_e, df_p, on="Nome")
+            st.metric("Lucro Potencial", f"R$ {( (df_f['Preco_Venda'] - df_f['Preco_Custo']) * df_f['Qtd_Unidades'] ).sum():,.2f}")
+            st.plotly_chart(px.bar(df_f, x='Nome', y='Qtd_Unidades', template="plotly_dark"), use_container_width=True)
+        else: st.error("Acesso restrito ao Gerente.")
+
+    elif menu == "🕒 HISTÓRICO BRUTO":
+        st.title("🕒 Histórico Total")
+        col1, col2 = st.columns(2)
+        bp = col1.text_input("Produto").upper()
+        bu = col2.text_input("Operador").upper()
         df_h = df_v.copy()
-        if busca_p: df_h = df_h[df_h['Produto'].str.contains(busca_p)]
-        if busca_u: df_h = df_h[df_h['Usuario'].str.contains(busca_u)]
-        
+        if bp: df_h = df_h[df_h['Produto'].str.contains(bp)]
+        if bu: df_h = df_h[df_h['Usuario'].str.contains(bu)]
         st.dataframe(df_h.iloc[::-1], use_container_width=True, hide_index=True)
         
-        st.markdown("---")
-        st.subheader("🚫 Área de Estorno")
-        if not df_h.empty:
-            for i, row in df_h.tail(10).iloc[::-1].iterrows():
-                c1, c2 = st.columns([5, 1])
-                c1.info(f"Venda: {row['Produto']} | Qtd: {row['Qtd']} | Total: R$ {row['Venda_T']} | {row['Hora']}")
-                if c2.button("ANULAR", key=f"btn_{i}"):
-                    df_e.loc[df_e['Nome'] == row['Produto'], 'Qtd_Unidades'] += row['Qtd']
+        if st.session_state['role'] == "ADMIN":
+            st.subheader("🚫 Estorno")
+            for i, r in df_h.tail(5).iterrows():
+                cc1, cc2 = st.columns([5,1])
+                cc1.write(f"{r['Hora']} - {r['Produto']} - R$ {r['Venda_T']}")
+                if cc2.button("ANULAR", key=f"ex_{i}"):
+                    df_e.loc[df_e['Nome'] == r['Produto'], 'Qtd_Unidades'] += r['Qtd']
                     df_e.to_csv(DB['est'], index=False)
                     df_v.drop(i).to_csv(DB['vendas'], index=False)
-                    st.success("Estornado!")
                     st.rerun()
-
-    # =================================================================
-    # DEMAIS MÓDULOS (COMPLETOS)
-    # =================================================================
-    elif menu == "📊 DASHBOARD":
-        st.title("📊 Resumo Financeiro")
-        if not df_e.empty and not df_p.empty:
-            df_f = pd.merge(df_e, df_p, on="Nome")
-            df_f['Lucro'] = (df_f['Preco_Venda'] - df_f['Preco_Custo']) * df_f['Qtd_Unidades']
-            st.metric("Lucro Estimado em Estoque", f"R$ {df_f['Lucro'].sum():,.2f}")
-            st.plotly_chart(px.bar(df_f, x='Nome', y='Qtd_Unidades', color='Categoria', template="plotly_dark"), use_container_width=True)
-
-    elif menu == "📦 ESTOQUE":
-        st.title("📦 Entrada de Mercadoria")
-        with st.form("ent"):
-            p = st.selectbox("Produto", df_p['Nome'].tolist())
-            q = st.number_input("Quantidade Total (Unidades)", 1)
-            if st.form_submit_button("ADICIONAR"):
-                df_e.loc[df_e['Nome'] == p, 'Qtd_Unidades'] += q
-                df_e.to_csv(DB['est'], index=False)
-                st.rerun()
-        st.dataframe(df_e, use_container_width=True)
 
     elif menu == "🍻 PDV RÁPIDO":
         st.title("🍻 Venda Expressa")
-        for _, r in df_p[df_p['Categoria'] == "Romarinho"].iterrows():
-            st_q = df_e[df_e['Nome'] == r['Nome']]['Qtd_Unidades'].values[0]
+        for _, r in df_p.iterrows():
+            q = df_e[df_e['Nome'] == r['Nome']]['Qtd_Unidades'].values[0]
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"### {r['Nome']}")
-            c2.metric("Estoque", f"{st_q} un")
-            if c3.button("VENDER UN", key=f"v_{r['Nome']}") and st_q >= 1:
+            c2.metric("Estoque", f"{q} un")
+            if c3.button("VENDER", key=f"v_{r['Nome']}") and q >= 1:
                 df_e.loc[df_e['Nome'] == r['Nome'], 'Qtd_Unidades'] -= 1
                 df_e.to_csv(DB['est'], index=False)
                 new_v = [[f"V{datetime.now().microsecond}", datetime.now().strftime("%d/%m"), datetime.now().strftime("%H:%M"), r['Nome'], 1, r['Preco_Custo'], r['Preco_Venda'], st.session_state['nome']]]
                 pd.DataFrame(new_v).to_csv(DB['vendas'], mode='a', header=False, index=False)
                 st.rerun()
 
-    elif menu == "🏗️ PILARES":
-        st.title("🏗️ Mapa de Pilares")
-        st.dataframe(df_pi, use_container_width=True)
+    elif menu == "⚙️ CONFIGURAÇÕES":
+        st.title("⚙️ Painel de Controle")
+        t1, t2, t3 = st.tabs(["🖼️ Meu Perfil", "📦 Cadastro Produtos", "👥 Gestão de Equipe"])
+        
+        with t1:
+            u_f = st.file_uploader("Trocar Foto")
+            if u_f:
+                b64 = get_img_64(u_f)
+                df_u = pd.read_csv(DB['usr'])
+                df_u.loc[df_u['user'] == st.session_state['user'], 'foto'] = b64
+                df_u.to_csv(DB['usr'], index=False)
+                st.session_state['foto'] = b64
+                st.success("Foto atualizada!")
 
-    elif menu == "🍶 CASCOS":
-        st.title("🍶 Dívidas de Cascos")
-        st.dataframe(df_c[df_c['Status']=="DEVE"], use_container_width=True)
+        with t2:
+            if st.session_state['role'] == "ADMIN":
+                with st.form("cad_p"):
+                    n = st.text_input("Nome").upper()
+                    pc, pv = st.number_input("Custo"), st.number_input("Venda")
+                    if st.form_submit_button("CADASTRAR"):
+                        pd.concat([df_p, pd.DataFrame([['Geral', n, pc, pv, 24]], columns=df_p.columns)]).to_csv(DB['prod'], index=False)
+                        pd.concat([df_e, pd.DataFrame([[n, 0, "-"]], columns=df_e.columns)]).to_csv(DB['est'], index=False)
+                        st.rerun()
+            else: st.warning("Apenas Admins cadastram produtos.")
 
-    elif menu == "⚙️ CONFIGS":
-        st.title("⚙️ Perfil e Cadastro")
-        u_file = st.file_uploader("Trocar Foto", type=['png', 'jpg'])
-        if u_file:
-            b64 = get_img_64(u_file)
-            df_u = pd.read_csv(DB['usr'])
-            df_u.loc[df_u['user'] == st.session_state['user'], 'foto'] = b64
-            df_u.to_csv(DB['usr'], index=False)
-            st.session_state['foto'] = b64
-            st.success("Foto salva! Recarregue.")
+        with t3:
+            if st.session_state['role'] == "ADMIN":
+                st.subheader("Novo Usuário")
+                with st.form("cad_u"):
+                    nu, nn, ns = st.text_input("Login"), st.text_input("Nome"), st.text_input("Senha")
+                    cargo = st.selectbox("Nível", ["OPERADOR", "ADMIN"])
+                    if st.form_submit_button("CRIAR ACESSO"):
+                        df_u_at = pd.read_csv(DB['usr'])
+                        new_u = pd.DataFrame([[nu, nn, ns, '', cargo]], columns=df_u_at.columns)
+                        pd.concat([df_u_at, new_u]).to_csv(DB['usr'], index=False)
+                        st.success(f"Acesso criado para {nn}!")
+                st.dataframe(pd.read_csv(DB['usr'])[['user', 'nome', 'cargo']], use_container_width=True)
+            else: st.warning("Apenas Admins gerenciam a equipe.")
+
+    # Módulos Simples (Estoque, Pilares, Cascos)
+    elif menu == "📦 ESTOQUE":
+        st.title("📦 Entrada")
+        p = st.selectbox("Item", df_p['Nome'].tolist())
+        q = st.number_input("Qtd", 1)
+        if st.button("DAR ENTRADA"):
+            df_e.loc[df_e['Nome'] == p, 'Qtd_Unidades'] += q
+            df_e.to_csv(DB['est'], index=False)
+            st.rerun()
+        st.dataframe(df_e, use_container_width=True)
+    
+    elif menu == "🏗️ PILARES": st.dataframe(df_pi)
+    elif menu == "🍶 CASCOS": st.dataframe(df_c)
