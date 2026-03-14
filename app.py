@@ -136,14 +136,14 @@ else:
     if st.sidebar.button("🚪 SAIR"):
         st.session_state['autenticado'] = False; st.rerun()
 
-    # --- 🏗️ PILARES (DINÂMICOS E CRESCENTES) ---
+    # --- 🏗️ PILARES (DINÂMICOS POR NOME E CRESCENTES) ---
     if menu == "🏗️ Pilares (Amarração)":
         st.title("🏗️ Engenharia de Pilares")
         
         with st.expander("🏗️ MONTAR / EMPILHAR CAMADA", expanded=True):
             pilares_existentes = sorted(df_pil['NomePilar'].unique().tolist())
             
-            # 1. ESCOLHA OU CRIAÇÃO DO PILAR
+            # Seleção ou Criação de Pilar
             col_sel1, col_sel2 = st.columns([1, 1])
             p_opcao = col_sel1.selectbox("Escolha um pilar existente", ["NOVO PILAR..."] + pilares_existentes)
             
@@ -158,15 +158,11 @@ else:
             if n_pilar:
                 cat_filtro = st.selectbox("Categoria da Bebida", df_p['Categoria'].unique())
                 
-                # 2. LÓGICA DE CAMADA (BASE PARA O TOPO)
-                # Se o pilar não existe, começa na Camada 1 (Base). Se existe, pega a maior e soma 1.
+                # Cálculo de camada: Começa na 1, se já existe, pega a próxima.
                 c_atual = 1 if df_pil[df_pil['NomePilar']==n_pilar].empty else df_pil[df_pil['NomePilar']==n_pilar]['Camada'].max() + 1
-                
-                # Padrão de amarração alternado (Zigue-zague)
                 at, fr = (3, 2) if c_atual % 2 != 0 else (2, 3)
                 
-                tag_camada = "🧱 BASE (CAMADA 1)" if c_atual == 1 else f"📦 CAMADA {c_atual}"
-                st.subheader(f"{tag_camada} | Padrão {at}x{fr}")
+                st.subheader(f"{'🧱 BASE' if c_atual == 1 else '📦 Camada '+str(c_atual)} (Padrão {at}x{fr})")
                 
                 lista_beb = ["Vazio"] + df_p[df_p['Categoria'] == cat_filtro]['Nome'].tolist()
                 beb_dict, av_dict = {}, {}
@@ -179,34 +175,26 @@ else:
                         beb_dict[pos] = st.selectbox(f"Ref", lista_beb, key=f"p_{pos}", label_visibility="collapsed")
                         av_dict[pos] = st.number_input(f"Unid", 0, key=f"a_{pos}")
                 
-                if st.button(f"CONSOLIDAR {tag_camada} EM {n_pilar}", use_container_width=True):
+                if st.button(f"CONSOLIDAR CAMADA {c_atual} NO PILAR {n_pilar}", use_container_width=True):
                     regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().microsecond}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
                     if regs:
                         pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False)
                         registrar_log(n_logado, f"Nova camada no pilar {n_pilar}")
-                        st.success(f"Empilhado com sucesso!")
+                        st.success(f"Camada {c_atual} empilhada!")
                         st.rerun()
 
-        # 3. EXIBIÇÃO VISUAL (TOPO EM CIMA, BASE EMBAIXO)
+        # EXIBIÇÃO DOS PILARES (REVERSA: TOPO EM CIMA)
         st.markdown("---")
         for pilar in sorted(df_pil['NomePilar'].unique()):
             with st.container():
                 st.markdown(f"### 📍 Pilar: {pilar}")
-                # Ordenamos as camadas do maior para o menor (descendente) 
-                # para que visualmente o Topo apareça primeiro na tela.
+                # reverse=True faz o maior número (topo) aparecer primeiro visualmente
                 camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
                 
                 for cam in camadas:
                     dados_cam = df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)]
                     cor_b = "#58a6ff" if cam == max(camadas) else "#30363d"
-                    
-                    # Nomeclatura visual
-                    if cam == 1:
-                        tag = "🧱 BASE (Camada 1)"
-                    elif cam == max(camadas):
-                        tag = f"🔝 TOPO (Camada {cam})"
-                    else:
-                        tag = f"📦 Camada {cam}"
+                    tag = "🔝 TOPO" if cam == max(camadas) else ("🧱 BASE" if cam == 1 else f"📦 Camada {cam}")
                     
                     st.markdown(f"<small style='color:{cor_b}; font-weight:bold;'>{tag}</small>", unsafe_allow_html=True)
                     cols_view = st.columns(5)
@@ -221,11 +209,10 @@ else:
                                 df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False)
                                 registrar_log(n_logado, f"Baixa {pilar}: {r['Bebida']}"); st.rerun()
                     
-                    # Seta indicando que há algo embaixo (exceto se for a base)
-                    if cam > 1: st.markdown("<div style='text-align:center; color:#30363d; margin-top:-10px; margin-bottom:10px;'>▼</div>", unsafe_allow_html=True)
+                    if cam > 1: st.markdown("<div style='text-align:center; color:#30363d; margin-top:-10px; margin-bottom:10px;'>▼ sobreposta ▼</div>", unsafe_allow_html=True)
                 
                 if is_adm:
-                    if st.button(f"🗑️ DESMONTAR TODO PILAR {pilar}", key=f"del_{pilar}"):
+                    if st.button(f"🗑️ DESMONTAR PILAR {pilar}", key=f"del_{pilar}"):
                         df_pil[df_pil['NomePilar'] != pilar].to_csv(DB_PIL, index=False)
                         st.rerun()
             st.divider()
@@ -252,11 +239,12 @@ else:
                 df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= u_b
                 df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda {item['Nome']}"); st.rerun()
 
-    # --- OUTRAS ABAS (Estoque, Cadastro, Cascos, Perfil, Admin, Logs, Equipe) ---
+    # --- ESTOQUE GERAL ---
     elif menu == "📦 Estoque Geral":
         st.title("📦 Inventário")
         st.dataframe(df_e, use_container_width=True, hide_index=True)
 
+    # --- CADASTRO ---
     elif menu == "✨ Cadastro":
         st.title("✨ Catálogo")
         with st.form("f_cad"):
@@ -268,6 +256,7 @@ else:
                     pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
                     pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
 
+    # --- CASCOS ---
     elif menu == "🍶 Controle de Cascos":
         st.title("🍶 Controle de Vasilhames")
         with st.form("f_cas"):
@@ -279,10 +268,12 @@ else:
             if st.button("DAR BAIXA ✅", key=f"bx_{r['ID']}"):
                 df_cas.at[i, 'Status'] = "PAGO"; df_cas.at[i, 'QuemBaixou'] = n_logado; df_cas.to_csv(DB_CAS, index=False); st.rerun()
 
+    # --- PERFIL ---
     elif menu == "⚙️ Perfil":
         st.title("⚙️ Meu Perfil")
         st.info(f"**Nome:** {n_logado}\n\n**Usuário:** {u_logado}")
 
+    # --- ADMIN ---
     elif menu == "📊 Admin Financeiro" and is_adm:
         st.title("📊 Gestão Patrimonial")
         backup_zip = gerar_backup_zip()
