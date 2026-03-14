@@ -19,6 +19,11 @@ st.set_page_config(
 
 st.markdown("""
     <style>
+    /* Configuração para modo APP no celular */
+    @media (max-width: 640px) {
+        .stApp { padding-bottom: 50px; }
+    }
+    
     .stApp { background-color: #0E1117; color: #E0E0E0; }
     div[data-testid="stExpander"] { 
         border: 1px solid #30363d; border-radius: 15px; 
@@ -39,7 +44,17 @@ st.markdown("""
     [data-testid="stForm"] {
         background-color: #161b22; border: 1px solid #30363d; border-radius: 15px; padding: 20px;
     }
+    /* Estilo para Cartões de Equipe */
+    .user-card {
+        background-color: #1c2128; border: 1px solid #30363d;
+        border-radius: 15px; padding: 15px; margin-bottom: 10px;
+        border-left: 5px solid #58a6ff;
+    }
     </style>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
     """, unsafe_allow_html=True)
 
 # =================================================================
@@ -244,7 +259,7 @@ else:
                     pd.concat([df_p, pd.DataFrame([[fc, fn, fp]], columns=df_p.columns)]).to_csv(DB_PROD, index=False)
                     pd.concat([df_e, pd.DataFrame([[fn, 0]], columns=df_e.columns)]).to_csv(DB_EST, index=False); st.rerun()
 
-    # --- 🍶 CONTROLE DE CASCOS (V7.2 - FINAL) ---
+    # --- 🍶 CONTROLE DE CASCOS ---
     elif menu == "🍶 Controle de Cascos":
         st.title("🍶 Gestão de Vasilhames")
         tab_deve, tab_empresa, tab_vazio, tab_hist = st.tabs([
@@ -306,42 +321,62 @@ else:
                     is_empresa = "EMPRESA" in str(r['Cliente'])
                     emoji = "🚚" if is_empresa else "🟢"
                     h1.write(f"{emoji} **{r['Cliente']}**: {r['Vasilhame']} ({r['Quantidade']} un)")
-                    # Agora mostra data e hora completa no histórico
                     h2.caption(f"📅 {r['Data']} | Por: {r['QuemBaixou']}")
-                    
-                    # Só aparece o botão de voltar se NÃO for empresa
                     if not is_empresa:
                         if h3.button("VOLTAR P/ LISTA ⏪", key=f"rev_{r['ID']}"):
-                            df_cas.at[i, 'Status'] = "DEVE"
-                            df_cas.at[i, 'QuemBaixou'] = ""
-                            df_cas.to_csv(DB_CAS, index=False)
-                            registrar_log(n_logado, f"Estorno casco: {r['Cliente']}")
-                            st.rerun()
+                            df_cas.at[i, 'Status'] = "DEVE"; df_cas.at[i, 'QuemBaixou'] = ""; df_cas.to_csv(DB_CAS, index=False); st.rerun()
+
+    # --- 📊 ADMIN FINANCEIRO ---
+    elif menu == "📊 Admin Financeiro" and is_adm:
+        st.title("📊 Painel Financeiro")
+        df_fin = pd.merge(df_e, df_p, on="Nome")
+        df_fin['Subtotal'] = df_fin['Estoque_Total_Un'] * df_fin['Preco_Unitario']
+        st.metric("Patrimônio Líquido (Custo)", f"R$ {df_fin['Subtotal'].sum():,.2f}")
+        st.dataframe(df_fin, use_container_width=True)
+
+    # --- 👥 EQUIPE (PROFISSIONAL E BONITA) ---
+    elif menu == "👥 Equipe" and is_adm:
+        st.title("👥 Gestão de Equipe")
+        
+        with st.expander("➕ CADASTRAR NOVO MEMBRO"):
+            with st.form("f_eq"):
+                c1, c2 = st.columns(2)
+                u = c1.text_input("👤 Usuário (Login)")
+                n = c2.text_input("📛 Nome Completo")
+                s = c1.text_input("🔑 Senha", type="password")
+                a = c2.selectbox("🛡️ Nível de Acesso", ["NÃO", "SIM"], format_func=lambda x: "GERENTE (ADM)" if x == "SIM" else "OPERADOR (VENDAS)")
+                if st.form_submit_button("CONTRATAR"):
+                    if u and n:
+                        pd.concat([df_usr, pd.DataFrame([[u, n, s, a, "0", ""]], columns=df_usr.columns)]).to_csv(DB_USR, index=False)
+                        st.success(f"Bem-vindo(a), {n}!"); st.rerun()
+
+        st.markdown("---")
+        for idx, row in df_usr.iterrows():
+            with st.container():
+                # HTML para o cartão profissional
+                tipo_user = "⭐ GERENTE" if row['is_admin'] == "SIM" else "👤 OPERADOR"
+                cor_border = "#238636" if row['is_admin'] == "SIM" else "#58a6ff"
+                
+                st.markdown(f"""
+                <div class="user-card" style="border-left: 5px solid {cor_border};">
+                    <span style="float: right; color: {cor_border}; font-weight: bold;">{tipo_user}</span>
+                    <h3 style="margin: 0;">{row['nome']}</h3>
+                    <code style="background: none; color: #8b949e;">Login: {row['user']}</code>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Botão de exclusão (exceto para o admin principal)
+                if row['user'] != 'admin':
+                    if st.button(f"Remover {row['user']}", key=f"del_{row['user']}"):
+                        df_usr.drop(idx).to_csv(DB_USR, index=False); st.rerun()
+
+    # --- 📜 LOGS ---
+    elif menu == "📜 Logs" and is_adm:
+        st.title("📜 Logs de Auditoria")
+        st.dataframe(pd.read_csv(DB_LOG).sort_index(ascending=False), use_container_width=True)
 
     # --- ⚙️ PERFIL ---
     elif menu == "⚙️ Perfil":
         st.title("⚙️ Meu Perfil")
         col_p1, col_p2 = st.columns([1, 2])
-        with col_p1: st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636; height: 180px; object-fit: cover;'></div>", unsafe_allow_html=True)
-        with col_p2:
-            st.info(f"**Nome:** {n_logado}\n**Usuário:** {u_logado}")
-            upload = st.file_uploader("Trocar Foto", type=['png', 'jpg'])
-            if st.button("SALVAR FOTO") and upload:
-                img = Image.open(upload).convert("RGB"); img.thumbnail((300, 300))
-                buf = io.BytesIO(); img.save(buf, format="PNG"); img_b64 = base64.b64encode(buf.getvalue()).decode()
-                df_usr.loc[df_usr['user'] == u_logado, 'foto'] = img_b64; df_usr.to_csv(DB_USR, index=False); st.rerun()
-
-    # --- 👥 EQUIPE ---
-    elif menu == "👥 Equipe" and is_adm:
-        st.title("👥 Equipe")
-        with st.form("f_eq"):
-            u, n, s = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha", type="password")
-            a = st.selectbox("Admin", ["NÃO", "SIM"])
-            if st.form_submit_button("CADASTRAR"):
-                pd.concat([df_usr, pd.DataFrame([[u, n, s, a, "0", ""]], columns=df_usr.columns)]).to_csv(DB_USR, index=False); st.rerun()
-        st.dataframe(df_usr[['user', 'nome', 'is_admin']])
-
-    # --- 📜 LOGS ---
-    elif menu == "📜 Logs" and is_adm:
-        st.title("📜 Logs")
-        st.dataframe(pd.read_csv(DB_LOG).sort_index(ascending=False))
+        with col_p1: st.markdown(f"<div style='text-align: center;'><img src='{f_path}' width='180' style='border-radius: 50%; border: 5px solid #238636
