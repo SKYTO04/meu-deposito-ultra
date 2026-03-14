@@ -7,13 +7,13 @@ import os
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v15) ---
-DB_PRODUTOS = "produtos_v15.csv"
-DB_ESTOQUE = "estoque_v15.csv"
-PILAR_ESTRUTURA = "pilares_v15.csv"
-USERS_FILE = "usuarios_v15.csv"
-LOG_FILE = "historico_v15.csv"
-CASCOS_FILE = "cascos_v15.csv"
+# --- 2. BANCO DE DADOS (v16) ---
+DB_PRODUTOS = "produtos_v16.csv"
+DB_ESTOQUE = "estoque_v16.csv"
+PILAR_ESTRUTURA = "pilares_v16.csv"
+USERS_FILE = "usuarios_v16.csv"
+LOG_FILE = "historico_v16.csv"
+CASCOS_FILE = "cascos_v16.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
@@ -54,7 +54,7 @@ if st.session_state["authentication_status"]:
 
     # --- ABA: GESTÃO DE PILARES ---
     if menu == "🏗️ Gestão de Pilares":
-        st.title("🏗️ Controle de Pilares")
+        st.title("🏗️ Gestão de Pilares")
         df_prod = pd.read_csv(DB_PRODUTOS)
         df_e = pd.read_csv(DB_ESTOQUE)
         df_pilar = pd.read_csv(PILAR_ESTRUTURA)
@@ -66,14 +66,14 @@ if st.session_state["authentication_status"]:
                 cam_atual = 1 if dados_p.empty else dados_p['Camada'].max() + 1
                 
                 if cam_atual == 1:
-                    inicio = st.radio("Início:", ["3 Atrás / 2 Frente", "2 Atrás / 3 Frente"], horizontal=True)
-                    st.session_state[f"lay_{nome_p}"] = inicio
+                    inicio = st.radio("Começar com:", ["3 Atrás / 2 Frente", "2 Atrás / 3 Frente"], horizontal=True)
+                    st.session_state[f"st_{nome_p}"] = inicio
                 
-                layout = st.session_state.get(f"lay_{nome_p}", "3 Atrás / 2 Frente")
+                layout = st.session_state.get(f"st_{nome_p}", "3 Atrás / 2 Frente")
                 inv = (cam_atual % 2 == 0) if layout == "3 Atrás / 2 Frente" else (cam_atual % 2 != 0)
 
-                st.subheader(f"Camada {cam_atual} ({'Invertida' if inv else 'Padrão'})")
-                lista_b = ["Vazio"] + df_prod[df_prod['Categoria'] == "Refrigerante"]['Nome'].tolist()
+                st.subheader(f"Camada {cam_atual}")
+                lista_b = ["Vazio"] + df_prod['Nome'].tolist()
                 
                 n_atras = 3 if not inv else 2
                 n_frente = 2 if not inv else 3
@@ -99,14 +99,13 @@ if st.session_state["authentication_status"]:
                         if beb != "Vazio":
                             f_id = f"{nome_p}_{cam_atual}_{pos}_{datetime.now().strftime('%H%M%S')}"
                             novos.append([f_id, nome_p, cam_atual, pos, beb, av_in[pos]])
-                            u_f = df_prod[df_prod['Nome'] == beb]['Un_por_Volume'].values[0]
-                            df_e.loc[df_e['Nome'] == beb, 'Estoque_Total_Un'] -= (u_f + av_in[pos])
+                            # Nota: O estoque já foi baixado na entrada ou permanece igual, aqui apenas registramos a posição física.
                     if novos:
                         pd.concat([df_pilar, pd.DataFrame(novos, columns=df_pilar.columns)]).to_csv(PILAR_ESTRUTURA, index=False)
-                        df_e.to_csv(DB_ESTOQUE, index=False)
+                        st.success("Camada registrada!")
                         st.rerun()
 
-        # --- MAPA VISUAL ---
+        # --- MAPA VISUAL COM BAIXA REAL ---
         st.divider()
         for np in df_pilar['NomePilar'].unique():
             with st.expander(f"📍 {np}", expanded=True):
@@ -118,63 +117,85 @@ if st.session_state["authentication_status"]:
                     for _, row in dados_c.iterrows():
                         p = int(row['Posicao'])
                         with cols[p-1]:
-                            cor = "#FFD700" if row['Avulsos'] > 0 else "#4CAF50"
-                            st.markdown(f'<div style="background-color:#1E1E1E; border:2px solid {cor}; padding:5px; border-radius:8px; text-align:center;"><b style="font-size:12px;">{row["Bebida"]}</b><br><small>{row["Avulsos"]} Avulsos</small></div>', unsafe_allow_html=True)
+                            st.markdown(f'<div style="background-color:#1E1E1E; border:1px solid #4CAF50; padding:5px; border-radius:8px; text-align:center;"><b>{row["Bebida"]}</b><br><small>{row["Avulsos"]} Avulsos</small></div>', unsafe_allow_html=True)
                             
                             c1, c2 = st.columns(2)
-                            if c1.button("Retirar", key=f"r{row['ID']}", help="Tira o fardo todo"):
+                            if c1.button("Retirar", key=f"r{row['ID']}", help="Venda do fardo"):
+                                # BAIXA AUTOMÁTICA NO ESTOQUE
+                                un_por_fardo = df_prod[df_prod['Nome'] == row['Bebida']]['Un_por_Volume'].values[0]
+                                total_sair = un_por_fardo + row['Avulsos']
+                                df_e.loc[df_e['Nome'] == row['Bebida'], 'Estoque_Total_Un'] -= total_sair
+                                df_e.to_csv(DB_ESTOQUE, index=False)
+                                
+                                # Remove do Pilar
                                 df_pilar = df_pilar[df_pilar['ID'] != row['ID']]
                                 df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
-                                registrar_log(nome_logado, f"Retirou fardo {row['Bebida']} de {np}")
+                                registrar_log(nome_logado, f"VENDA: {row['Bebida']} (Fardo+{row['Avulsos']} un) de {np}")
                                 st.rerun()
                             
-                            if c2.button("1 Un", key=f"u{row['ID']}", help="Tira 1 unidade solta"):
+                            if c2.button("1 Un", key=f"u{row['ID']}"):
                                 if row['Avulsos'] > 0:
+                                    # BAIXA DE 1 UNIDADE NO ESTOQUE
+                                    df_e.loc[df_e['Nome'] == row['Bebida'], 'Estoque_Total_Un'] -= 1
+                                    df_e.to_csv(DB_ESTOQUE, index=False)
+                                    
+                                    # Atualiza no Pilar
                                     df_pilar.loc[df_pilar['ID'] == row['ID'], 'Avulsos'] -= 1
                                     df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
-                                    registrar_log(nome_logado, f"Retirou 1 un avulsa de {row['Bebida']} em {np}")
+                                    registrar_log(nome_logado, f"VENDA AVULSA: 1 un {row['Bebida']} de {np}")
                                     st.rerun()
-                                else:
-                                    st.error("Sem avulsos!")
 
-    # --- ABA: CADASTRO (COM TRAVA DE DUPLICADO) ---
+    # --- ABA: ENTRADA DE ESTOQUE (ONDE TUDO COMEÇA) ---
+    elif menu == "📦 Entrada de Estoque":
+        st.title("📦 Entrada e Saldo Total")
+        df_prod = pd.read_csv(DB_PRODUTOS)
+        df_e = pd.read_csv(DB_ESTOQUE)
+        if not df_prod.empty:
+            with st.form("f_e"):
+                b = st.selectbox("Bebida", df_prod['Nome'].unique())
+                info = df_prod[df_prod['Nome'] == b].iloc[0]
+                f, s = st.columns(2)
+                nf = f.number_input("Adicionar Fardos", 0)
+                ns = s.number_input("Adicionar Soltas", 0)
+                if st.form_submit_button("Lançar no Estoque"):
+                    qtd_nova = (nf * info['Un_por_Volume']) + ns
+                    df_e.loc[df_e['Nome'] == b, 'Estoque_Total_Un'] += qtd_nova
+                    df_e.to_csv(DB_ESTOQUE, index=False)
+                    st.success(f"Adicionado {qtd_nova} unidades de {b}")
+                    st.rerun()
+        st.subheader("Saldo Geral em Unidades")
+        st.dataframe(df_e, use_container_width=True)
+
+    # --- ABA: CADASTRO ---
     elif menu == "✨ Cadastrar Novo Produto":
         st.title("✨ Cadastro")
         df_p = pd.read_csv(DB_PRODUTOS)
         with st.form("f_cad"):
             cat = st.selectbox("Categoria", ["Refrigerante", "Romarinho", "Cerveja Lata", "Long Neck"])
             nome = st.text_input("Nome").upper()
-            u = 24 if "Romarinho" in cat or "Long" in cat else (12 if "Lata" in cat else 6)
+            # Define padrão de volume
+            if cat == "Romarinho": u = 24
+            elif cat == "Cerveja Lata": u = 12
+            elif cat == "Long Neck": u = 6
+            else: u = 6 # Refrigerante pet 2L geralmente 6
+            
             if st.form_submit_button("Salvar"):
                 if nome in df_p['Nome'].values:
-                    st.warning("Este produto já existe!")
+                    st.warning("Já cadastrado!")
                 else:
                     pd.concat([df_p, pd.DataFrame([[cat, nome, u, 0, 0]], columns=df_p.columns)]).to_csv(DB_PRODUTOS, index=False)
                     df_e = pd.read_csv(DB_ESTOQUE)
                     pd.concat([df_e, pd.DataFrame([[nome, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
-                    st.success("Cadastrado!")
+                    st.success("Criado!")
                     st.rerun()
 
-    # --- ABA: ESTOQUE (Recuperada) ---
-    elif menu == "📦 Entrada de Estoque":
-        st.title("📦 Reposição")
-        df_prod = pd.read_csv(DB_PRODUTOS)
-        if not df_prod.empty:
-            with st.form("f_e"):
-                b = st.selectbox("Bebida", df_prod['Nome'].unique())
-                info = df_prod[df_prod['Nome'] == b].iloc[0]
-                f, s = st.columns(2)
-                nf = f.number_input("Fardos", 0); ns = s.number_input("Soltas", 0)
-                if st.form_submit_button("Atualizar"):
-                    df_e = pd.read_csv(DB_ESTOQUE)
-                    df_e.loc[df_e['Nome'] == b, 'Estoque_Total_Un'] = (nf * info['Un_por_Volume']) + ns
-                    df_e.to_csv(DB_ESTOQUE, index=False)
-                    st.success("Estoque OK!")
-        st.dataframe(pd.read_csv(DB_ESTOQUE))
-
     elif menu == "📜 Histórico (Adm)":
-        st.title("📜 Log")
+        st.title("📜 Log de Vendas e Movimentação")
         st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1])
+
+    elif menu == "🍶 Cascos":
+        st.title("🍶 Cascos")
+        st.dataframe(pd.read_csv(CASCOS_FILE))
 
 elif st.session_state["authentication_status"] is False:
     st.error('Login incorreto.')
