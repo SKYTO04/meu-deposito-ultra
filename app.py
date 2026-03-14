@@ -11,164 +11,126 @@ st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout
 DB_FILE = "estoque_financeiro.csv"
 USERS_FILE = "usuarios_v2.csv"
 LOG_FILE = "historico_atividades.csv"
-CASCOS_FILE = "emprestimo_cascos_v2.csv"
+PILAR_FILE = "organizacao_pilares.csv" # Novo arquivo para salvar as pilhas
 
 def init_files():
     if not os.path.exists(USERS_FILE):
-        pd.DataFrame([['admin', 'Gerente Mestre', 'admin123', 'SIM']], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, index=False)
+        pd.DataFrame([['admin', 'Gerente', 'admin123', 'SIM']], columns=['user', 'nome', 'senha', 'is_admin']).to_csv(USERS_FILE, index=False)
     if not os.path.exists(DB_FILE):
-        pd.DataFrame(columns=['Categoria', 'Prateleira', 'Bebida', 'Qtd', 'Fardo', 'Posição', 'Minimo', 'Custo', 'Venda']).to_csv(DB_FILE, index=False)
+        pd.DataFrame(columns=['Categoria', 'Bebida', 'Qtd', 'Fardo', 'Custo', 'Venda']).to_csv(DB_FILE, index=False)
     if not os.path.exists(LOG_FILE):
         pd.DataFrame(columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, index=False)
-    if not os.path.exists(CASCOS_FILE):
-        pd.DataFrame(columns=['Data', 'Nome', 'Tipo', 'Quantidade', 'Telefone', 'Status']).to_csv(CASCOS_FILE, index=False)
+    if not os.path.exists(PILAR_FILE):
+        # Armazena: Qual Pilar, Qual Bebida, Quantos Fardos, Ordem (baixo para cima)
+        pd.DataFrame(columns=['Pilar', 'Bebida', 'Qtd_Fardo', 'Ordem']).to_csv(PILAR_FILE, index=False)
 
 init_files()
-
-def registrar_log(user, acao):
-    data = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    pd.DataFrame([[data, user, acao]], columns=['Data', 'Usuario', 'Ação']).to_csv(LOG_FILE, mode='a', header=False, index=False)
 
 # --- 3. LOGIN ---
 df_users = pd.read_csv(USERS_FILE)
 credentials = {'usernames': {}}
 for _, r in df_users.iterrows():
-    credentials['usernames'][str(r['user'])] = {'name': str(r['nome']), 'password': str(r['senha']), 'email': ''}
+    credentials['usernames'][str(r['user'])] = {'name': str(r['nome']), 'password': str(r['senha'])}
 
-authenticator = stauth.Authenticate(credentials, 'estoque_pacaembu_cookie', 'auth_pacaembu_key', 30)
+authenticator = stauth.Authenticate(credentials, 'pacaembu_cookie', 'auth_key', 30)
 authenticator.login(location='main')
 
 if st.session_state["authentication_status"]:
     nome_logado = st.session_state["name"]
-    user_id = st.session_state["username"]
-    user_info = df_users[df_users['user'] == user_id].iloc[0]
-    sou_admin = user_info['is_admin'] == 'SIM'
+    sou_admin = df_users[df_users['user'] == st.session_state["username"]]['is_admin'].values[0] == 'SIM'
 
-    st.sidebar.markdown(f"### 👤 {nome_logado}")
-    menu_opcoes = ["🏗️ Mapa", "📦 Romarinho", "🍾 Long Neck", "🔄 Vendas/Cargas", "🍶 Cascos"]
-    if sou_admin: menu_opcoes += ["📜 Histórico (Adm)", "👥 Equipe", "📊 Financeiro", "⚙️ Configs"]
-    menu = st.sidebar.radio("Navegação", menu_opcoes)
+    st.sidebar.title(f"👤 {nome_logado}")
+    menu = st.sidebar.radio("Navegação", ["🏗️ Mapa de Pilares", "📦 Romarinho", "🍾 Long Neck", "🔄 Movimentar/Montar Pilar", "⚙️ Configs"])
     authenticator.logout('Sair', 'sidebar')
 
-    # --- ABA: CONFIGS (CORREÇÃO DA SINCRONIZAÇÃO) ---
-    if menu == "⚙️ Configs" and sou_admin:
-        st.title("⚙️ Gestão de Produtos")
-        tab_cad, tab_edit = st.tabs(["➕ Cadastrar Novo", "✏️ Editar/Excluir"])
-
-        with tab_cad:
-            # FUNÇÃO QUE FORÇA A TROCA DOS VALORES
-            def reset_campos():
-                c = st.session_state['cat_selector']
-                if c == "Romarinho":
-                    st.session_state['label_vol'] = "Engradados"
-                    st.session_state['un_fixo'] = 24
-                elif c == "Cerveja Lata":
-                    st.session_state['label_vol'] = "Fardos"
-                    st.session_state['un_fixo'] = 12
-                elif c == "Refrigerante":
-                    st.session_state['label_vol'] = "Fardos"
-                    st.session_state['un_fixo'] = 6
-                elif c == "Long Neck":
-                    st.session_state['label_vol'] = "Fardos (Caixas)"
-                    st.session_state['un_fixo'] = 24
-
-            # Inicializa os estados se não existirem
-            if 'label_vol' not in st.session_state:
-                st.session_state['label_vol'] = "Engradados"
-                st.session_state['un_fixo'] = 24
-
-            # Seletor de Categoria com a função de reset
-            cat = st.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante"], 
-                               key='cat_selector', on_change=reset_campos)
-
-            with st.form("form_cadastro_v3"):
-                nome = st.text_input("Nome da Bebida").upper()
+    # --- ABA: MOVIMENTAÇÃO E MONTAGEM DE PILAR ---
+    if menu == "🔄 Movimentar/Montar Pilar":
+        st.title("🏗️ Montagem de Pilar e Carga")
+        
+        df_p = pd.read_csv(PILAR_FILE)
+        df_e = pd.read_csv(DB_FILE)
+        
+        tab1, tab2 = st.tabs(["🏗️ Montar/Adicionar ao Pilar", "❌ Resetar Pilar"])
+        
+        with tab1:
+            with st.form("form_pilar"):
+                pilar_nome = st.selectbox("Qual Pilar (Localização)?", ["Pilar A", "Pilar B", "Pilar C", "Fundo 1", "Fundo 2"])
+                bebida_p = st.selectbox("Bebida", df_e['Bebida'].unique())
+                qtd_f = st.number_input("Quantos Fardos/Engradados colocar em cima?", min_value=1, step=1)
                 
-                col1, col2 = st.columns(2)
-                # Agora o 'value' desses campos está amarrado ao session_state
-                q_vol = col1.number_input(f"Qtd Inicial ({st.session_state['label_vol']})", min_value=0, step=1)
-                q_un = col2.number_input("Qtd Inicial (Unidades Avulsas)", min_value=0, step=1)
+                st.info("💡 Lembre da amarração: 2 atrás/3 frente ou 3 atrás/2 frente!")
                 
-                u_por_fardo = st.number_input(f"Unidades por {st.session_state['label_vol']}", 
-                                             value=st.session_state['un_fixo'])
-                
-                custo = st.number_input("Custo Unitário", format="%.2f")
-                venda = st.number_input("Venda Unitária", format="%.2f")
-                
-                total_calc = (q_vol * u_por_fardo) + q_un
-                st.info(f"💡 O estoque começará com: **{total_calc} unidades**")
+                if st.form_submit_button("Adicionar ao Topo do Pilar"):
+                    # Calcula ordem (pega a maior ordem atual do pilar e soma 1)
+                    ordem_atual = df_p[df_p['Pilar'] == pilar_nome]['Ordem'].max()
+                    nova_ordem = 1 if pd.isna(ordem_atual) else ordem_atual + 1
+                    
+                    novo_bloco = pd.DataFrame([[pilar_nome, bebida_p, qtd_f, nova_ordem]], columns=df_p.columns)
+                    pd.concat([df_p, novo_bloco]).to_csv(PILAR_FILE, index=False)
+                    
+                    # Atualiza estoque geral
+                    regra = df_e[df_e['Bebida'] == bebida_p].iloc[0]
+                    total_un = qtd_f * int(regra['Fardo'])
+                    df_e.loc[df_e['Bebida'] == bebida_p, 'Qtd'] += total_un
+                    df_e.to_csv(DB_FILE, index=False)
+                    
+                    st.success(f"Adicionado {qtd_f} fardos de {bebida_p} no topo do {pilar_nome}!")
+                    st.rerun()
 
-                if st.form_submit_button("Salvar Produto"):
-                    if nome:
-                        df_db = pd.read_csv(DB_FILE)
-                        novo_p = pd.DataFrame([[cat, "GERAL", nome, total_calc, u_por_fardo, 1, 12, custo, venda]], columns=df_db.columns)
-                        pd.concat([df_db, novo_p]).to_csv(DB_FILE, index=False)
-                        registrar_log(nome_logado, f"CADASTRO: {nome} ({total_calc} un)")
-                        st.success("Cadastrado!")
-                        st.rerun()
+        with tab2:
+            st.warning("Isso remove todos os itens do pilar selecionado no sistema.")
+            pilar_del = st.selectbox("Pilar para limpar", df_p['Pilar'].unique())
+            if st.button("Limpar Pilar"):
+                df_p = df_p[df_p['Pilar'] != pilar_del]
+                df_p.to_csv(PILAR_FILE, index=False)
+                st.success(f"{pilar_del} esvaziado!")
+                st.rerun()
 
-        with tab_edit:
-            df_ed = pd.read_csv(DB_FILE)
-            if not df_ed.empty:
-                escolha = st.selectbox("Escolha o produto", df_ed['Bebida'].tolist())
-                d = df_ed[df_ed['Bebida'] == escolha].iloc[0]
-                with st.form("ed_rapida"):
-                    novo_n = st.text_input("Nome", value=d['Bebida']).upper()
-                    novo_f = st.number_input("Unidades no Volume", value=int(d['Fardo']))
-                    if st.form_submit_button("Salvar Alterações"):
-                        df_ed.loc[df_ed['Bebida'] == escolha, ['Bebida', 'Fardo']] = [novo_n, novo_f]
-                        df_ed.to_csv(DB_FILE, index=False)
-                        st.success("Atualizado!")
-                        st.rerun()
+    # --- ABA: MAPA DE PILARES (VISÃO VISUAL) ---
+    elif menu == "🏗️ Mapa de Pilares":
+        st.title("📊 Visão Real do Estoque (Pilares)")
+        df_p = pd.read_csv(PILAR_FILE)
+        
+        if df_p.empty:
+            st.info("Nenhum pilar montado ainda.")
+        else:
+            pilares = df_p['Pilar'].unique()
+            cols = st.columns(len(pilares))
+            
+            for i, p in enumerate(pilares):
+                with cols[i]:
+                    st.subheader(p)
+                    # Pega itens do pilar e inverte a ordem (para mostrar o topo em cima)
+                    itens = df_p[df_p['Pilar'] == p].sort_values(by='Ordem', ascending=False)
+                    
+                    for _, row in itens.iterrows():
+                        # Desenha o bloco físico
+                        cor = "#007bff" if "NORMAL" in row['Bebida'] else "#dc3545"
+                        st.markdown(f"""
+                            <div style="background-color: {cor}; padding: 10px; border: 2px solid white; border-radius: 5px; text-align: center; margin-bottom: 5px; color: white;">
+                                <b>{row['Qtd_Fardo']} Fardos</b><br>{row['Bebida']}
+                            </div>
+                        """, unsafe_allow_html=True)
+                    st.markdown("<div style='text-align:center; font-weight:bold;'>⬇️ CHÃO ⬇️</div>", unsafe_allow_html=True)
 
-    # --- ABA: VENDAS/CARGAS (SOMA CRUZADA DE FARDO + UNIDADE) ---
-    elif menu == "🔄 Vendas/Cargas":
-        st.title("🔄 Movimentar Estoque")
-        df_v = pd.read_csv(DB_FILE)
-        if not df_v.empty:
-            with st.form("mov_cruzada"):
-                item_v = st.selectbox("Selecione a Bebida", df_v['Bebida'].unique())
-                acao_v = st.radio("Operação", ["Venda", "Carga", "Quebra"], horizontal=True)
-                
-                # Busca as regras desse item
-                regra = df_v[df_v['Bebida'] == item_v].iloc[0]
-                v_fardo = int(regra['Fardo'])
-                t_vol = "Engradado" if regra['Categoria'] == "Romarinho" else "Fardo"
-
-                col_a, col_b = st.columns(2)
-                in_vol = col_a.number_input(f"Qtd de {t_vol}s", min_value=0, step=1)
-                in_un = col_b.number_input("Unidades Avulsas", min_value=0, step=1)
-                
-                soma_total = (in_vol * v_fardo) + in_un
-                st.warning(f"Total da operação: {soma_total} unidades")
-
-                if st.form_submit_button("Confirmar"):
-                    if soma_total > 0:
-                        idx = df_v[df_v['Bebida'] == item_v].index
-                        if acao_v == "Carga": df_v.loc[idx, 'Qtd'] += soma_total
-                        else: df_v.loc[idx, 'Qtd'] -= soma_total
-                        
-                        df_v.to_csv(DB_FILE, index=False)
-                        registrar_log(nome_logado, f"{acao_v.upper()}: {soma_total} un de {item_v}")
-                        st.success("Estoque atualizado!")
-                        st.rerun()
-
-    # --- VISUALIZAÇÃO ---
+    # --- DEMAIS ABAS ---
     elif menu == "📦 Romarinho":
         st.title("📦 Romarinhos")
-        df_e = pd.read_csv(DB_FILE)
-        for _, r in df_e[df_e['Categoria'] == 'Romarinho'].iterrows():
-            st.info(f"**{r['Bebida']}** | Total: {int(r['Qtd'])} un ({int(r['Qtd']//r['Fardo'])} Eng. e {int(r['Qtd']%r['Fardo'])} un)")
+        df = pd.read_csv(DB_FILE)
+        for _, r in df[df['Categoria'] == 'Romarinho'].iterrows():
+            st.info(f"**{r['Bebida']}** | Total: {int(r['Qtd'])} un")
 
-    elif menu == "🍾 Long Neck":
-        st.title("🍾 Long Necks")
-        df_e = pd.read_csv(DB_FILE)
-        for _, r in df_e[df_e['Categoria'] == 'Long Neck'].iterrows():
-            st.info(f"**{r['Bebida']}** | Total: {int(r['Qtd'])} un ({int(r['Qtd']//r['Fardo'])} Caixas e {int(r['Qtd']%r['Fardo'])} un)")
-
-    elif menu == "📜 Histórico (Adm)" and sou_admin:
-        st.title("📜 Histórico")
-        st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1], use_container_width=True)
+    elif menu == "⚙️ Configs":
+        st.title("⚙️ Cadastro")
+        cat = st.selectbox("Categoria", ["Romarinho", "Cerveja Lata", "Long Neck", "Refrigerante"])
+        with st.form("cad"):
+            nome = st.text_input("Nome (ex: COCA NORMAL)").upper()
+            fardo = st.number_input("Unidades por Fardo", value=6 if cat=="Refrigerante" else 24)
+            if st.form_submit_button("Salvar"):
+                df = pd.read_csv(DB_FILE)
+                novo = pd.DataFrame([[cat, nome, 0, fardo, 0.0, 0.0]], columns=df.columns)
+                pd.concat([df, novo]).to_csv(DB_FILE, index=False)
+                st.rerun()
 
 elif st.session_state["authentication_status"] is False:
     st.error('Login incorreto.')
