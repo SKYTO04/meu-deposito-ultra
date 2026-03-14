@@ -7,13 +7,13 @@ import os
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Conveniência Pacaembu", page_icon="🍻", layout="wide")
 
-# --- 2. BANCO DE DADOS (v14) ---
-DB_PRODUTOS = "produtos_v14.csv"
-DB_ESTOQUE = "estoque_v14.csv"
-PILAR_ESTRUTURA = "pilares_v14.csv"
-USERS_FILE = "usuarios_v14.csv"
-LOG_FILE = "historico_v14.csv"
-CASCOS_FILE = "cascos_v14.csv"
+# --- 2. BANCO DE DADOS (v15) ---
+DB_PRODUTOS = "produtos_v15.csv"
+DB_ESTOQUE = "estoque_v15.csv"
+PILAR_ESTRUTURA = "pilares_v15.csv"
+USERS_FILE = "usuarios_v15.csv"
+LOG_FILE = "historico_v15.csv"
+CASCOS_FILE = "cascos_v15.csv"
 
 def init_files():
     if not os.path.exists(USERS_FILE):
@@ -54,140 +54,127 @@ if st.session_state["authentication_status"]:
 
     # --- ABA: GESTÃO DE PILARES ---
     if menu == "🏗️ Gestão de Pilares":
-        st.title("🏗️ Gestão de Pilares e Amarração")
+        st.title("🏗️ Controle de Pilares")
         df_prod = pd.read_csv(DB_PRODUTOS)
         df_e = pd.read_csv(DB_ESTOQUE)
         df_pilar = pd.read_csv(PILAR_ESTRUTURA)
 
-        with st.expander("➕ Adicionar Nova Camada", expanded=True):
+        with st.expander("➕ Adicionar Camada", expanded=True):
             nome_p = st.text_input("NOME DO PILAR").upper()
             if nome_p:
                 dados_p = df_pilar[df_pilar['NomePilar'] == nome_p]
                 cam_atual = 1 if dados_p.empty else dados_p['Camada'].max() + 1
                 
                 if cam_atual == 1:
-                    inicio = st.radio("Como começar este pilar?", ["3 Atrás / 2 Frente", "2 Atrás / 3 Frente"], horizontal=True)
-                    st.session_state[f"layout_{nome_p}"] = inicio
+                    inicio = st.radio("Início:", ["3 Atrás / 2 Frente", "2 Atrás / 3 Frente"], horizontal=True)
+                    st.session_state[f"lay_{nome_p}"] = inicio
                 
-                layout_base = st.session_state.get(f"layout_{nome_p}", "3 Atrás / 2 Frente")
-                inverter = (cam_atual % 2 == 0) if layout_base == "3 Atrás / 2 Frente" else (cam_atual % 2 != 0)
+                layout = st.session_state.get(f"lay_{nome_p}", "3 Atrás / 2 Frente")
+                inv = (cam_atual % 2 == 0) if layout == "3 Atrás / 2 Frente" else (cam_atual % 2 != 0)
 
-                st.subheader(f"Montando Camada {cam_atual}")
-                lista_bebidas = ["Vazio"] + df_prod[df_prod['Categoria'] == "Refrigerante"]['Nome'].tolist()
+                st.subheader(f"Camada {cam_atual} ({'Invertida' if inv else 'Padrão'})")
+                lista_b = ["Vazio"] + df_prod[df_prod['Categoria'] == "Refrigerante"]['Nome'].tolist()
                 
-                num_atras = 3 if not inverter else 2
-                num_frente = 2 if not inverter else 3
+                n_atras = 3 if not inv else 2
+                n_frente = 2 if not inv else 3
                 
-                escolhas = {}
-                avulsos_input = {}
-
+                escolhas, av_in = {}, {}
                 st.write("**ATRÁS**")
-                c_atras = st.columns(num_atras)
-                for i in range(num_atras):
+                cols_a = st.columns(n_atras)
+                for i in range(n_atras):
                     pos = i + 1
-                    escolhas[pos] = c_atras[i].selectbox(f"Pos {pos}", lista_bebidas, key=f"s_{pos}_{cam_atual}")
-                    avulsos_input[pos] = c_atras[i].number_input(f"Avulsos P{pos}", min_value=0, key=f"av_{pos}_{cam_atual}")
+                    escolhas[pos] = cols_a[i].selectbox(f"Pos {pos}", lista_b, key=f"s{pos}{cam_atual}")
+                    av_in[pos] = cols_a[i].number_input(f"Avulsos P{pos}", 0, key=f"a{pos}{cam_atual}")
                 
                 st.write("**FRENTE**")
-                c_frente = st.columns(num_frente)
-                for i in range(num_frente):
-                    pos = num_atras + i + 1
-                    escolhas[pos] = c_frente[i].selectbox(f"Pos {pos}", lista_bebidas, key=f"s_{pos}_{cam_atual}")
-                    avulsos_input[pos] = c_frente[i].number_input(f"Avulsos P{pos}", min_value=0, key=f"av_{pos}_{cam_atual}")
+                cols_f = st.columns(n_frente)
+                for i in range(n_frente):
+                    pos = n_atras + i + 1
+                    escolhas[pos] = cols_f[i].selectbox(f"Pos {pos}", lista_b, key=f"s{pos}{cam_atual}")
+                    av_in[pos] = cols_f[i].number_input(f"Avulsos P{pos}", 0, key=f"a{pos}{cam_atual}")
 
                 if st.button("💾 Salvar Camada"):
                     novos = []
                     for pos, beb in escolhas.items():
                         if beb != "Vazio":
-                            fardo_id = f"{nome_p}_{cam_atual}_{pos}_{datetime.now().strftime('%H%M%S')}"
-                            qtd_av = avulsos_input.get(pos, 0)
-                            novos.append([fardo_id, nome_p, cam_atual, pos, beb, qtd_av])
-                            un_f = df_prod[df_prod['Nome'] == beb]['Un_por_Volume'].values[0]
-                            df_e.loc[df_e['Nome'] == beb, 'Estoque_Total_Un'] -= (un_f + qtd_av)
-                    
+                            f_id = f"{nome_p}_{cam_atual}_{pos}_{datetime.now().strftime('%H%M%S')}"
+                            novos.append([f_id, nome_p, cam_atual, pos, beb, av_in[pos]])
+                            u_f = df_prod[df_prod['Nome'] == beb]['Un_por_Volume'].values[0]
+                            df_e.loc[df_e['Nome'] == beb, 'Estoque_Total_Un'] -= (u_f + av_in[pos])
                     if novos:
                         pd.concat([df_pilar, pd.DataFrame(novos, columns=df_pilar.columns)]).to_csv(PILAR_ESTRUTURA, index=False)
                         df_e.to_csv(DB_ESTOQUE, index=False)
                         st.rerun()
 
-        # --- VISUALIZAÇÃO COM AVULSOS EM DESTAQUE ---
+        # --- MAPA VISUAL ---
         st.divider()
-        st.subheader("📋 Mapa de Pilares (Visualização de Carga)")
-        
         for np in df_pilar['NomePilar'].unique():
             with st.expander(f"📍 {np}", expanded=True):
                 cms = sorted(df_pilar[df_pilar['NomePilar'] == np]['Camada'].unique(), reverse=True)
                 for c in cms:
                     st.write(f"**Camada {c}**")
                     dados_c = df_pilar[(df_pilar['NomePilar'] == np) & (df_pilar['Camada'] == c)]
-                    
-                    # Grade de 5 colunas para o visual
                     cols = st.columns(5)
-                    
                     for _, row in dados_c.iterrows():
                         p = int(row['Posicao'])
                         with cols[p-1]:
-                            # Estilo para destacar os avulsos se existirem
-                            cor_borda = "#FFD700" if row['Avulsos'] > 0 else "#4CAF50"
-                            texto_avulso = f"<br><span style='color:{cor_borda}; font-size:13px;'>➕ {row['Avulsos']} UN</span>" if row['Avulsos'] > 0 else ""
+                            cor = "#FFD700" if row['Avulsos'] > 0 else "#4CAF50"
+                            st.markdown(f'<div style="background-color:#1E1E1E; border:2px solid {cor}; padding:5px; border-radius:8px; text-align:center;"><b style="font-size:12px;">{row["Bebida"]}</b><br><small>{row["Avulsos"]} Avulsos</small></div>', unsafe_allow_html=True)
                             
-                            st.markdown(f"""
-                                <div style="background-color:#1E1E1E; border:2px solid {cor_borda}; padding:8px; border-radius:8px; text-align:center; min-height:80px;">
-                                    <small style="color:#888;">Pos {p}</small><br>
-                                    <b style="font-size:14px;">{row['Bebida']}</b>
-                                    {texto_avulso}
-                                </div>
-                            """, unsafe_allow_html=True)
-                            
-                            if st.button("Retirar", key=f"ret_{row['ID']}"):
+                            c1, c2 = st.columns(2)
+                            if c1.button("Retirar", key=f"r{row['ID']}", help="Tira o fardo todo"):
                                 df_pilar = df_pilar[df_pilar['ID'] != row['ID']]
                                 df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
-                                registrar_log(nome_logado, f"Baixa: {row['Bebida']} do pilar {np}")
+                                registrar_log(nome_logado, f"Retirou fardo {row['Bebida']} de {np}")
                                 st.rerun()
-                
-                if st.button(f"Zerar {np}", key=f"clear_{np}"):
-                    df_pilar = df_pilar[df_pilar['NomePilar'] != np]
-                    df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
-                    st.rerun()
+                            
+                            if c2.button("1 Un", key=f"u{row['ID']}", help="Tira 1 unidade solta"):
+                                if row['Avulsos'] > 0:
+                                    df_pilar.loc[df_pilar['ID'] == row['ID'], 'Avulsos'] -= 1
+                                    df_pilar.to_csv(PILAR_ESTRUTURA, index=False)
+                                    registrar_log(nome_logado, f"Retirou 1 un avulsa de {row['Bebida']} em {np}")
+                                    st.rerun()
+                                else:
+                                    st.error("Sem avulsos!")
 
-    # --- ABAS DE APOIO ---
-    elif menu == "📦 Entrada de Estoque":
-        st.title("📦 Reposição")
-        df_prod = pd.read_csv(DB_PRODUTOS)
-        if not df_prod.empty:
-            with st.form("est"):
-                b = st.selectbox("Bebida", df_prod['Nome'].unique())
-                info = df_prod[df_prod['Nome'] == b].iloc[0]
-                f, s = st.columns(2)
-                nf = f.number_input("Novos Fardos", 0)
-                ns = s.number_input("Novas Soltas", 0)
-                if st.form_submit_button("Atualizar"):
-                    df_e = pd.read_csv(DB_ESTOQUE)
-                    df_e.loc[df_e['Nome'] == b, 'Estoque_Total_Un'] = (nf * info['Un_por_Volume']) + ns
-                    df_e.to_csv(DB_ESTOQUE, index=False)
-                    st.success("Estoque Atualizado!")
-        st.dataframe(pd.read_csv(DB_ESTOQUE))
-
+    # --- ABA: CADASTRO (COM TRAVA DE DUPLICADO) ---
     elif menu == "✨ Cadastrar Novo Produto":
         st.title("✨ Cadastro")
-        with st.form("cad"):
+        df_p = pd.read_csv(DB_PRODUTOS)
+        with st.form("f_cad"):
             cat = st.selectbox("Categoria", ["Refrigerante", "Romarinho", "Cerveja Lata", "Long Neck"])
             nome = st.text_input("Nome").upper()
             u = 24 if "Romarinho" in cat or "Long" in cat else (12 if "Lata" in cat else 6)
             if st.form_submit_button("Salvar"):
-                df_p = pd.read_csv(DB_PRODUTOS)
-                pd.concat([df_p, pd.DataFrame([[cat, nome, u, 0, 0]], columns=df_p.columns)]).to_csv(DB_PRODUTOS, index=False)
-                df_e = pd.read_csv(DB_ESTOQUE)
-                pd.concat([df_e, pd.DataFrame([[nome, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
-                st.rerun()
+                if nome in df_p['Nome'].values:
+                    st.warning("Este produto já existe!")
+                else:
+                    pd.concat([df_p, pd.DataFrame([[cat, nome, u, 0, 0]], columns=df_p.columns)]).to_csv(DB_PRODUTOS, index=False)
+                    df_e = pd.read_csv(DB_ESTOQUE)
+                    pd.concat([df_e, pd.DataFrame([[nome, 0]], columns=df_e.columns)]).to_csv(DB_ESTOQUE, index=False)
+                    st.success("Cadastrado!")
+                    st.rerun()
+
+    # --- ABA: ESTOQUE (Recuperada) ---
+    elif menu == "📦 Entrada de Estoque":
+        st.title("📦 Reposição")
+        df_prod = pd.read_csv(DB_PRODUTOS)
+        if not df_prod.empty:
+            with st.form("f_e"):
+                b = st.selectbox("Bebida", df_prod['Nome'].unique())
+                info = df_prod[df_prod['Nome'] == b].iloc[0]
+                f, s = st.columns(2)
+                nf = f.number_input("Fardos", 0); ns = s.number_input("Soltas", 0)
+                if st.form_submit_button("Atualizar"):
+                    df_e = pd.read_csv(DB_ESTOQUE)
+                    df_e.loc[df_e['Nome'] == b, 'Estoque_Total_Un'] = (nf * info['Un_por_Volume']) + ns
+                    df_e.to_csv(DB_ESTOQUE, index=False)
+                    st.success("Estoque OK!")
+        st.dataframe(pd.read_csv(DB_ESTOQUE))
 
     elif menu == "📜 Histórico (Adm)":
         st.title("📜 Log")
         st.dataframe(pd.read_csv(LOG_FILE).iloc[::-1])
 
-    elif menu == "🍶 Cascos":
-        st.title("🍶 Cascos")
-        st.dataframe(pd.read_csv(CASCOS_FILE))
-
 elif st.session_state["authentication_status"] is False:
-    st.error('Acesso negado.')
+    st.error('Login incorreto.')
