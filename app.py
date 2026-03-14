@@ -256,7 +256,7 @@ else:
             if st.session_state['role'] == "ADMIN":
                 with st.form("cad_p"):
                     n_p = st.text_input("Nome do Novo Produto").upper()
-                    c_p = st.selectbox("Categoria", ["Romarinho", "Lata", "Outros"])
+                    c_p = st.selectbox("Categoria", ["Romarinho", "Lata", "Refrigerante", "Long neck", "Outros"])
                     col_p1, col_p2 = st.columns(2)
                     v_custo = col_p1.number_input("Preço de Custo", 0.0)
                     v_venda = col_p2.number_input("Preço de Venda", 0.0)
