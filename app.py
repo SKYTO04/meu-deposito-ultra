@@ -13,7 +13,7 @@ import base64
 st.set_page_config(page_title="PACAEMBU G86 - OMNI PRESTIGE", page_icon="🏦", layout="wide")
 
 # Inicialização Crítica (Impede qualquer erro de KeyError)
-chaves = {'auth': False, 'nome': '', 'foto': '', 'user': '', 'role': 'ADMIN'}
+chaves = {'auth': False, 'nome': '', 'foto': '', 'user': '', 'role': 'admin'}
 for k, v in chaves.items():
     if k not in st.session_state:
         st.session_state[k] = v
