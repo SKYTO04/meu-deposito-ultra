@@ -35,7 +35,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (V86)
+# 2. BANCO DE DADOS (V86 DEFINITIVO)
 # =================================================================
 V = "v86_final_prestige"
 DB = {
@@ -61,7 +61,7 @@ def init_db():
 init_db()
 
 # =================================================================
-# 3. CONTROLE DE ACESSO
+# 3. SEGURANÇA E LOGIN
 # =================================================================
 if not st.session_state['auth']:
     _, col_login, _ = st.columns([1, 1, 1])
@@ -100,12 +100,12 @@ else:
     if menu == "📦 ESTOQUE DINÂMICO":
         st.title("📦 Entrada de Mercadoria")
         if df_p.empty:
-            st.warning("Cadastre produtos primeiro.")
+            st.warning("Cadastre produtos nas configurações primeiro.")
         else:
             p_sel = st.selectbox("Selecione o Produto", df_p['Nome'].tolist())
             cat_atual = df_p[df_p['Nome'] == p_sel]['Categoria'].values[0]
             
-            # Definição automática de multiplicadores
+            # Multiplicadores Dinâmicos
             if cat_atual == "Romarinho": fator, txt = 24, "Engradado (x24)"
             elif cat_atual == "Long Neck": fator, txt = 24, "Caixa (x24)"
             elif cat_atual == "Litrinho": fator, txt = 24, "Engradado (x24)"
@@ -113,129 +113,130 @@ else:
             elif cat_atual == "Refrigerante": fator, txt = 6, "Fardo 2L (x6)"
             else: fator, txt = 1, "Unidade/Caixa"
 
-            st.info(f"Categoria: **{cat_atual}** | Multiplicador: **{txt}**")
+            st.info(f"Categoria: **{cat_atual}** | Multiplicador de Carga: **{txt}**")
             
-            with st.form("form_ent"):
+            with st.form("form_entrada"):
                 c1, c2 = st.columns(2)
                 qtd_f = c1.number_input(f"Qtd de {txt}", 0)
-                qtd_a = c2.number_input("Avulsas", 0)
+                qtd_a = c2.number_input("Unidades Avulsas", 0)
                 if st.form_submit_button("REGISTRAR ENTRADA"):
                     total = (qtd_f * fator) + qtd_a
                     df_e.loc[df_e['Nome'] == p_sel, 'Qtd_Unidades'] += total
                     df_e.to_csv(DB['est'], index=False)
-                    st.success(f"Estoque atualizado: +{total} unidades.")
+                    st.success(f"Estoque atualizado com sucesso! +{total} un.")
                     st.rerun()
-        
         st.markdown("---")
         st.dataframe(df_e, use_container_width=True, hide_index=True)
 
     # =================================================================
-    # MÓDULO: MAPA PILARES (FILTRADO PARA REFRI E OUTROS)
+    # MÓDULO: MAPA PILARES (FILTRO RESTRITO: SÓ REFRIGERANTE E OUTROS)
     # =================================================================
     elif menu == "🏗️ MAPA PILARES":
-        st.title("🏗️ Organização Física (Refri e Outros)")
+        st.title("🏗️ Organização Física (Exclusivo: Refri e Outros)")
         
-        # Filtro de exibição baseado na categoria do produto
+        # Filtro de segurança: Cruza bebida com a categoria e remove o que não for Refri ou Outros
         df_pi_cat = pd.merge(df_pi, df_p[['Nome', 'Categoria']], left_on='Bebida', right_on='Nome', how='left')
         df_pi_filtrado = df_pi_cat[df_pi_cat['Categoria'].isin(["Refrigerante", "Outros"])]
 
         if st.session_state['role'] == "ADMIN":
-            with st.expander("🆕 Adicionar Camada ao Pilar"):
-                with st.form("add_pi"):
+            with st.expander("🆕 Cadastrar Nova Camada"):
+                with st.form("form_pilar"):
                     p_alvo = st.selectbox("Pilar", ["Pilar A", "Pilar B", "Pilar C"])
                     cam_n = st.number_input("Nível", 1)
-                    st.write("Configurar 5 Colunas:")
-                    c_cols = st.columns(5)
+                    st.write("Configurar as 5 Posições da Camada:")
+                    cols_c = st.columns(5)
                     novas = []
                     for i in range(5):
-                        with c_cols[i]:
-                            b = st.selectbox(f"Pos {i+1}", ["Vazio"] + df_p['Nome'].tolist(), key=f"p_{i}")
-                            av = st.number_input(f"Avulso {i+1}", 0, key=f"a_{i}")
-                            if b != "Vazio": novas.append([f"PI{datetime.now().microsecond}{i}", p_alvo, cam_n, i+1, b, av])
-                    if st.form_submit_button("GRAVAR"):
+                        with cols_c[i]:
+                            b = st.selectbox(f"Pos {i+1}", ["Vazio"] + df_p['Nome'].tolist(), key=f"pi_p_{i}")
+                            av = st.number_input(f"Avulso {i+1}", 0, key=f"pi_a_{i}")
+                            if b != "Vazio":
+                                novas.append([f"PI{datetime.now().microsecond}{i}", p_alvo, cam_n, i+1, b, av])
+                    if st.form_submit_button("GRAVAR NO MAPA"):
                         pd.concat([df_pi, pd.DataFrame(novas, columns=df_pi.columns)]).to_csv(DB['pi'], index=False)
                         st.rerun()
 
-        p_ver = st.selectbox("Ver Pilar:", ["Pilar A", "Pilar B", "Pilar C"])
+        p_ver = st.selectbox("Visualizar Pilar:", ["Pilar A", "Pilar B", "Pilar C"])
         camadas = sorted(df_pi_filtrado[df_pi_filtrado['Pilar'] == p_ver]['Camada'].unique(), reverse=True)
         
         if not camadas:
-            st.warning("Nenhum Refrigerante ou item 'Outros' cadastrado neste pilar.")
-        
-        for cam in camadas:
-            st.markdown(f"#### Camada {cam}")
-            cols_grade = st.columns(5)
-            itens = df_pi_filtrado[(df_pi_filtrado['Pilar'] == p_ver) & (df_pi_filtrado['Camada'] == cam)]
-            for _, r in itens.iterrows():
-                with cols_grade[int(r['Pos'])-1]:
-                    st.markdown(f"**{r['Bebida']}**")
-                    st.caption(f"Avulsos: {r['Avulsos']}")
-                    if st.button("BAIXA", key=f"bx_{r['ID']}"):
-                        # Baixa inteligente baseada na categoria (Refri tirando 6 por padrão)
-                        f_b = 6 if r['Categoria'] == "Refrigerante" else 1
-                        total_b = f_b + int(r['Avulsos'])
-                        df_e.loc[df_e['Nome'] == r['Bebida'], 'Qtd_Unidades'] -= total_b
-                        df_e.to_csv(DB['est'], index=False)
-                        df_pi[df_pi['ID'] != r['ID']].to_csv(DB['pi'], index=False)
-                        st.rerun()
+            st.warning("Nenhum item de 'Refrigerante' ou 'Outros' registrado neste pilar.")
+        else:
+            for cam in camadas:
+                st.markdown(f"#### Camada {cam}")
+                cols_g = st.columns(5)
+                # Seleciona apenas itens que passaram no filtro e estão nesta camada
+                itens_camada = df_pi_filtrado[(df_pi_filtrado['Pilar'] == p_ver) & (df_pi_filtrado['Camada'] == cam)]
+                for _, r in itens_camada.iterrows():
+                    with cols_g[int(r['Pos'])-1]:
+                        st.markdown(f"📦 **{r['Bebida']}**")
+                        st.caption(f"Cat: {r['Categoria']} | Avulso: {r['Avulsos']}")
+                        if st.button("RETIRAR", key=f"bx_{r['ID']}"):
+                            # Lógica de baixa: Refri tira 6, Outros tira 1
+                            f_b = 6 if r['Categoria'] == "Refrigerante" else 1
+                            total_b = f_b + int(r['Avulsos'])
+                            df_e.loc[df_e['Nome'] == r['Bebida'], 'Qtd_Unidades'] -= total_b
+                            df_e.to_csv(DB['est'], index=False)
+                            # Remove a posição do pilar do banco original
+                            df_pi_orig = pd.read_csv(DB['pi'])
+                            df_pi_orig[df_pi_orig['ID'] != r['ID']].to_csv(DB['pi'], index=False)
+                            st.rerun()
 
     # =================================================================
-    # MÓDULO: CONFIGS E AUDITORIA
+    # MÓDULO: CONFIGS E AUDITORIA (LOG DE CADASTRO)
     # =================================================================
     elif menu == "⚙️ CONFIGS & CADASTROS":
-        st.title("⚙️ Painel de Controle")
-        t1, t2, t3 = st.tabs(["👥 Equipe", "📦 Produtos", "📜 Histórico de Cadastro"])
-
+        st.title("⚙️ Gerenciamento e Auditoria")
+        t1, t2, t3 = st.tabs(["👥 Gerir Equipe", "📦 Cadastrar Produtos", "📜 Histórico de Ações"])
+        
         with t1:
             if st.session_state['role'] == "ADMIN":
-                with st.form("cad_u"):
-                    u, n, s, r = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Nível", ["OPERADOR", "ADMIN"])
-                    if st.form_submit_button("CADASTRAR"):
+                with st.form("cad_user"):
+                    u, n, s, r = st.text_input("Login"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Acesso", ["OPERADOR", "ADMIN"])
+                    if st.form_submit_button("CRIAR USUÁRIO"):
                         pd.concat([pd.read_csv(DB['usr']), pd.DataFrame([[u,n,s,'',r]], columns=pd.read_csv(DB['usr']).columns)]).to_csv(DB['usr'], index=False)
                         pd.concat([df_log, pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO USUÁRIO", n, st.session_state['nome']]], columns=df_log.columns)]).to_csv(DB['log_cad'], index=False)
-                        st.success("Usuário OK!")
+                        st.success("Pronto!")
             st.dataframe(pd.read_csv(DB['usr'])[['user', 'nome', 'cargo']], use_container_width=True)
 
         with t2:
             if st.session_state['role'] == "ADMIN":
-                with st.form("cad_p"):
-                    nn = st.text_input("Nome do Item").upper()
+                with st.form("cad_prod"):
+                    nn = st.text_input("Nome do Produto").upper()
                     cc = st.selectbox("Categoria", ["Romarinho", "Litrinho", "Long Neck", "Cerveja Lata", "Refrigerante", "Outros"])
-                    pc, pv = st.number_input("Preço Custo"), st.number_input("Preço Venda")
+                    pc, pv = st.number_input("Preço de Custo"), st.number_input("Preço de Venda")
                     if st.form_submit_button("SALVAR PRODUTO"):
                         pd.concat([df_p, pd.DataFrame([[cc, nn, pc, pv, 24]], columns=df_p.columns)]).to_csv(DB['prod'], index=False)
                         pd.concat([df_e, pd.DataFrame([[nn, 0, "-"]], columns=df_e.columns)]).to_csv(DB['est'], index=False)
-                        # Salva Auditoria
-                        new_log = pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO PROD", nn, st.session_state['nome']]], columns=df_log.columns)
-                        pd.concat([pd.read_csv(DB['log_cad']), new_log]).to_csv(DB['log_cad'], index=False)
+                        pd.concat([pd.read_csv(DB['log_cad']), pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO PROD", nn, st.session_state['nome']]], columns=df_log.columns)]).to_csv(DB['log_cad'], index=False)
                         st.rerun()
-
+        
         with t3:
-            st.subheader("📜 Quem cadastrou o quê")
+            st.subheader("📜 Log de Auditoria")
             st.dataframe(pd.read_csv(DB['log_cad']).iloc[::-1], use_container_width=True, hide_index=True)
 
     # =================================================================
-    # DEMAIS MÓDULOS (PDV, HISTÓRICO, DASH)
+    # PDV E HISTÓRICO DE VENDAS
     # =================================================================
     elif menu == "🍻 PDV RÁPIDO":
-        st.title("🍻 Venda")
+        st.title("🍻 Venda Expressa")
         for _, r in df_p.iterrows():
             q = df_e[df_e['Nome'] == r['Nome']]['Qtd_Unidades'].values[0]
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"### {r['Nome']}")
-            c2.metric("Estoque", f"{q} un")
-            if c3.button("VENDER 1 UN", key=f"v_{r['Nome']}"):
+            c2.metric("Saldo", f"{q} un")
+            if c3.button("VENDER", key=f"v_{r['Nome']}"):
                 df_e.loc[df_e['Nome'] == r['Nome'], 'Qtd_Unidades'] -= 1
                 df_e.to_csv(DB['est'], index=False)
                 pd.DataFrame([[f"V{datetime.now().microsecond}", datetime.now().strftime("%d/%m"), datetime.now().strftime("%H:%M"), r['Nome'], 1, r['Preco_Custo'], r['Preco_Venda'], st.session_state['nome']]]).to_csv(DB['vendas'], mode='a', header=False, index=False)
                 st.rerun()
 
     elif menu == "🕒 HISTÓRICO BRUTO":
-        st.title("🕒 Registro de Saídas")
+        st.title("🕒 Registro Geral de Vendas")
         st.dataframe(df_v.iloc[::-1], use_container_width=True, hide_index=True)
 
     elif menu == "📊 DASHBOARD":
         if st.session_state['role'] == "ADMIN":
             df_fin = pd.merge(df_e, df_p, on="Nome")
             st.metric("Lucro Potencial", f"R$ {((df_fin['Preco_Venda']-df_fin['Preco_Custo'])*df_fin['Qtd_Unidades']).sum():,.2f}")
-            st.plotly_chart(px.bar(df_fin, x='Nome', y='Qtd_Unidades', color='Categoria', title="Estoque por Categoria", template="plotly_dark"), use_container_width=True)
+            st.plotly_chart(px.bar(df_fin, x='Nome', y='Qtd_Unidades', color='Categoria', template="plotly_dark"), use_container_width=True)
