@@ -8,7 +8,7 @@ import io
 import base64
 
 # =================================================================
-# 1. SETUP DE INTERFACE PRESTIGE (DARK MODE)
+# 1. SETUP DE INTERFACE (DARK PRESTIGE)
 # =================================================================
 st.set_page_config(page_title="PACAEMBU G86 - OMNI PRESTIGE", page_icon="🏦", layout="wide")
 
@@ -26,7 +26,7 @@ st.markdown("""
     .stButton>button {
         width: 100%; border-radius: 8px; font-weight: 800; height: 3.5em;
         text-transform: uppercase; border: 1px solid #30363D;
-        background-color: #21262D; color: #C9D1D9; transition: 0.3s;
+        background-color: #21262D; color: #C9D1D9; transition: 0.2s;
     }
     .stButton>button:hover { border-color: #58A6FF !important; color: #58A6FF !important; transform: scale(1.01); }
     h1, h2, h3 { color: #58A6FF !important; font-weight: 900 !important; }
@@ -40,8 +40,7 @@ st.markdown("""
 V = "v86_final_prestige"
 DB = {
     'prod': f'prod_{V}.csv', 'est': f'est_{V}.csv', 'vendas': f'vendas_{V}.csv',
-    'cascos': f'cas_{V}.csv', 'pi': f'pi_{V}.csv', 'usr': f'usr_{V}.csv', 
-    'log_cad': f'log_cad_{V}.csv'
+    'pi': f'pi_{V}.csv', 'usr': f'usr_{V}.csv', 'log_cad': f'log_cad_{V}.csv'
 }
 
 def init_db():
@@ -62,7 +61,7 @@ def init_db():
 init_db()
 
 # =================================================================
-# 3. SEGURANÇA E LOGIN
+# 3. CONTROLE DE ACESSO
 # =================================================================
 if not st.session_state['auth']:
     _, col_login, _ = st.columns([1, 1, 1])
@@ -100,126 +99,131 @@ else:
     # =================================================================
     if menu == "📦 ESTOQUE DINÂMICO":
         st.title("📦 Entrada de Mercadoria")
-        
         if df_p.empty:
-            st.warning("Cadastre produtos primeiro nas Configurações.")
+            st.warning("Cadastre produtos primeiro.")
         else:
-            p_sel = st.selectbox("Selecione o Produto para Entrada", df_p['Nome'].tolist())
-            
-            # Lógica que muda tudo baseado na categoria cadastrada
+            p_sel = st.selectbox("Selecione o Produto", df_p['Nome'].tolist())
             cat_atual = df_p[df_p['Nome'] == p_sel]['Categoria'].values[0]
             
-            if cat_atual == "Romarinho": fator = 24; txt = "Engradado (x24)"
-            elif cat_atual == "Long Neck": fator = 24; txt = "Caixa/Fardo (x24)"
-            elif cat_atual == "Litrinho": fator = 24; txt = "Engradado (x24)"
-            elif cat_atual == "Cerveja Lata": fator = 12; txt = "Fardo (x12)"
-            elif cat_atual == "Refrigerante": fator = 6; txt = "Fardo 2L (x6)"
-            else: fator = 1; txt = "Unidade/Caixa"
+            # Definição automática de multiplicadores
+            if cat_atual == "Romarinho": fator, txt = 24, "Engradado (x24)"
+            elif cat_atual == "Long Neck": fator, txt = 24, "Caixa (x24)"
+            elif cat_atual == "Litrinho": fator, txt = 24, "Engradado (x24)"
+            elif cat_atual == "Cerveja Lata": fator, txt = 12, "Fardo (x12)"
+            elif cat_atual == "Refrigerante": fator, txt = 6, "Fardo 2L (x6)"
+            else: fator, txt = 1, "Unidade/Caixa"
 
-            st.info(f"**CATEGORIA:** {cat_atual} | **MODO DE ENTRADA:** {txt}")
+            st.info(f"Categoria: **{cat_atual}** | Multiplicador: **{txt}**")
             
-            with st.form("form_estoque"):
+            with st.form("form_ent"):
                 c1, c2 = st.columns(2)
-                qtd_f = c1.number_input(f"Qtd de {txt}", min_value=0, step=1)
-                qtd_a = c2.number_input("Unidades Avulsas", min_value=0, step=1)
-                
-                if st.form_submit_button("REGISTRAR NO ESTOQUE"):
+                qtd_f = c1.number_input(f"Qtd de {txt}", 0)
+                qtd_a = c2.number_input("Avulsas", 0)
+                if st.form_submit_button("REGISTRAR ENTRADA"):
                     total = (qtd_f * fator) + qtd_a
                     df_e.loc[df_e['Nome'] == p_sel, 'Qtd_Unidades'] += total
-                    df_e.loc[df_e['Nome'] == p_sel, 'Ultima_Entrada'] = datetime.now().strftime("%d/%m %H:%M")
                     df_e.to_csv(DB['est'], index=False)
-                    st.success(f"Registrado! +{total} unidades de {p_sel}")
+                    st.success(f"Estoque atualizado: +{total} unidades.")
                     st.rerun()
-
+        
         st.markdown("---")
-        st.subheader("Estoque Geral")
         st.dataframe(df_e, use_container_width=True, hide_index=True)
 
     # =================================================================
-    # MÓDULO: CONFIGS & HISTÓRICO DE CADASTRO (AUDITORIA)
-    # =================================================================
-    elif menu == "⚙️ CONFIGS & CADASTROS":
-        st.title("⚙️ Painel de Controle")
-        t1, t2, t3 = st.tabs(["👥 Gerir Equipe", "📦 Cadastrar Produtos", "📜 Histórico de Cadastro"])
-
-        with t1:
-            if st.session_state['role'] == "ADMIN":
-                with st.form("u_c"):
-                    u, n, s, r = st.text_input("Login"), st.text_input("Nome Completo"), st.text_input("Senha"), st.selectbox("Nível", ["OPERADOR", "ADMIN"])
-                    if st.form_submit_button("CRIAR ACESSO"):
-                        pd.concat([pd.read_csv(DB['usr']), pd.DataFrame([[u,n,s,'',r]], columns=pd.read_csv(DB['usr']).columns)]).to_csv(DB['usr'], index=False)
-                        # Log de Auditoria
-                        new_log = pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO USUÁRIO", n, st.session_state['nome']]], columns=df_log.columns)
-                        pd.concat([df_log, new_log]).to_csv(DB['log_cad'], index=False)
-                        st.success("Usuário criado com sucesso!")
-            st.dataframe(pd.read_csv(DB['usr'])[['user', 'nome', 'cargo']], use_container_width=True)
-
-        with t2:
-            if st.session_state['role'] == "ADMIN":
-                with st.form("p_c"):
-                    nn = st.text_input("Nome do Item").upper()
-                    cc = st.selectbox("Categoria", ["Romarinho", "Litrinho", "Long Neck", "Cerveja Lata", "Refrigerante", "Outros"])
-                    pc, pv = st.number_input("Preço Custo"), st.number_input("Preço Venda")
-                    if st.form_submit_button("CADASTRAR PRODUTO"):
-                        pd.concat([df_p, pd.DataFrame([[cc, nn, pc, pv, 24]], columns=df_p.columns)]).to_csv(DB['prod'], index=False)
-                        pd.concat([df_e, pd.DataFrame([[nn, 0, "-"]], columns=df_e.columns)]).to_csv(DB['est'], index=False)
-                        # Log de Auditoria
-                        new_log = pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO PROD", nn, st.session_state['nome']]], columns=df_log.columns)
-                        pd.concat([pd.read_csv(DB['log_cad']), new_log]).to_csv(DB['log_cad'], index=False)
-                        st.rerun()
-
-        with t3:
-            st.subheader("📜 Auditoria: Quem cadastrou o quê?")
-            st.dataframe(pd.read_csv(DB['log_cad']).iloc[::-1], use_container_width=True, hide_index=True)
-
-    # =================================================================
-    # MAPA PILARES E PDV
+    # MÓDULO: MAPA PILARES (FILTRADO PARA REFRI E OUTROS)
     # =================================================================
     elif menu == "🏗️ MAPA PILARES":
-        st.title("🏗️ Organização Física")
+        st.title("🏗️ Organização Física (Refri e Outros)")
+        
+        # Filtro de exibição baseado na categoria do produto
+        df_pi_cat = pd.merge(df_pi, df_p[['Nome', 'Categoria']], left_on='Bebida', right_on='Nome', how='left')
+        df_pi_filtrado = df_pi_cat[df_pi_cat['Categoria'].isin(["Refrigerante", "Outros"])]
+
         if st.session_state['role'] == "ADMIN":
-            with st.expander("🆕 Adicionar Camada"):
-                with st.form("pilar_cad"):
+            with st.expander("🆕 Adicionar Camada ao Pilar"):
+                with st.form("add_pi"):
                     p_alvo = st.selectbox("Pilar", ["Pilar A", "Pilar B", "Pilar C"])
                     cam_n = st.number_input("Nível", 1)
                     st.write("Configurar 5 Colunas:")
                     c_cols = st.columns(5)
-                    novas_pos = []
+                    novas = []
                     for i in range(5):
                         with c_cols[i]:
                             b = st.selectbox(f"Pos {i+1}", ["Vazio"] + df_p['Nome'].tolist(), key=f"p_{i}")
                             av = st.number_input(f"Avulso {i+1}", 0, key=f"a_{i}")
-                            if b != "Vazio": novas_pos.append([f"PI{datetime.now().microsecond}{i}", p_alvo, cam_n, i+1, b, av])
+                            if b != "Vazio": novas.append([f"PI{datetime.now().microsecond}{i}", p_alvo, cam_n, i+1, b, av])
                     if st.form_submit_button("GRAVAR"):
-                        pd.concat([df_pi, pd.DataFrame(novas_pos, columns=df_pi.columns)]).to_csv(DB['pi'], index=False)
+                        pd.concat([df_pi, pd.DataFrame(novas, columns=df_pi.columns)]).to_csv(DB['pi'], index=False)
                         st.rerun()
 
         p_ver = st.selectbox("Ver Pilar:", ["Pilar A", "Pilar B", "Pilar C"])
-        camadas = sorted(df_pi[df_pi['Pilar'] == p_ver]['Camada'].unique(), reverse=True)
+        camadas = sorted(df_pi_filtrado[df_pi_filtrado['Pilar'] == p_ver]['Camada'].unique(), reverse=True)
+        
+        if not camadas:
+            st.warning("Nenhum Refrigerante ou item 'Outros' cadastrado neste pilar.")
+        
         for cam in camadas:
             st.markdown(f"#### Camada {cam}")
             cols_grade = st.columns(5)
-            itens = df_pi[(df_pi['Pilar'] == p_ver) & (df_pi['Camada'] == cam)]
+            itens = df_pi_filtrado[(df_pi_filtrado['Pilar'] == p_ver) & (df_pi_filtrado['Camada'] == cam)]
             for _, r in itens.iterrows():
                 with cols_grade[int(r['Pos'])-1]:
                     st.markdown(f"**{r['Bebida']}**")
-                    if st.button("DAR BAIXA", key=f"bx_{r['ID']}"):
-                        # Baixa baseada na categoria
-                        cat_b = df_p[df_p['Nome']==r['Bebida']]['Categoria'].values[0]
-                        f_b = 24 if cat_b in ["Romarinho", "Litrinho", "Long Neck"] else 6 if cat_b == "Refrigerante" else 12
+                    st.caption(f"Avulsos: {r['Avulsos']}")
+                    if st.button("BAIXA", key=f"bx_{r['ID']}"):
+                        # Baixa inteligente baseada na categoria (Refri tirando 6 por padrão)
+                        f_b = 6 if r['Categoria'] == "Refrigerante" else 1
                         total_b = f_b + int(r['Avulsos'])
                         df_e.loc[df_e['Nome'] == r['Bebida'], 'Qtd_Unidades'] -= total_b
                         df_e.to_csv(DB['est'], index=False)
                         df_pi[df_pi['ID'] != r['ID']].to_csv(DB['pi'], index=False)
                         st.rerun()
 
+    # =================================================================
+    # MÓDULO: CONFIGS E AUDITORIA
+    # =================================================================
+    elif menu == "⚙️ CONFIGS & CADASTROS":
+        st.title("⚙️ Painel de Controle")
+        t1, t2, t3 = st.tabs(["👥 Equipe", "📦 Produtos", "📜 Histórico de Cadastro"])
+
+        with t1:
+            if st.session_state['role'] == "ADMIN":
+                with st.form("cad_u"):
+                    u, n, s, r = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Nível", ["OPERADOR", "ADMIN"])
+                    if st.form_submit_button("CADASTRAR"):
+                        pd.concat([pd.read_csv(DB['usr']), pd.DataFrame([[u,n,s,'',r]], columns=pd.read_csv(DB['usr']).columns)]).to_csv(DB['usr'], index=False)
+                        pd.concat([df_log, pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO USUÁRIO", n, st.session_state['nome']]], columns=df_log.columns)]).to_csv(DB['log_cad'], index=False)
+                        st.success("Usuário OK!")
+            st.dataframe(pd.read_csv(DB['usr'])[['user', 'nome', 'cargo']], use_container_width=True)
+
+        with t2:
+            if st.session_state['role'] == "ADMIN":
+                with st.form("cad_p"):
+                    nn = st.text_input("Nome do Item").upper()
+                    cc = st.selectbox("Categoria", ["Romarinho", "Litrinho", "Long Neck", "Cerveja Lata", "Refrigerante", "Outros"])
+                    pc, pv = st.number_input("Preço Custo"), st.number_input("Preço Venda")
+                    if st.form_submit_button("SALVAR PRODUTO"):
+                        pd.concat([df_p, pd.DataFrame([[cc, nn, pc, pv, 24]], columns=df_p.columns)]).to_csv(DB['prod'], index=False)
+                        pd.concat([df_e, pd.DataFrame([[nn, 0, "-"]], columns=df_e.columns)]).to_csv(DB['est'], index=False)
+                        # Salva Auditoria
+                        new_log = pd.DataFrame([[datetime.now().strftime("%d/%m/%y"), datetime.now().strftime("%H:%M"), "CADASTRO PROD", nn, st.session_state['nome']]], columns=df_log.columns)
+                        pd.concat([pd.read_csv(DB['log_cad']), new_log]).to_csv(DB['log_cad'], index=False)
+                        st.rerun()
+
+        with t3:
+            st.subheader("📜 Quem cadastrou o quê")
+            st.dataframe(pd.read_csv(DB['log_cad']).iloc[::-1], use_container_width=True, hide_index=True)
+
+    # =================================================================
+    # DEMAIS MÓDULOS (PDV, HISTÓRICO, DASH)
+    # =================================================================
     elif menu == "🍻 PDV RÁPIDO":
-        st.title("🍻 Venda Rápida")
+        st.title("🍻 Venda")
         for _, r in df_p.iterrows():
             q = df_e[df_e['Nome'] == r['Nome']]['Qtd_Unidades'].values[0]
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"### {r['Nome']}")
-            c2.metric("Saldo", f"{q} un")
+            c2.metric("Estoque", f"{q} un")
             if c3.button("VENDER 1 UN", key=f"v_{r['Nome']}"):
                 df_e.loc[df_e['Nome'] == r['Nome'], 'Qtd_Unidades'] -= 1
                 df_e.to_csv(DB['est'], index=False)
@@ -233,6 +237,5 @@ else:
     elif menu == "📊 DASHBOARD":
         if st.session_state['role'] == "ADMIN":
             df_fin = pd.merge(df_e, df_p, on="Nome")
-            lucro = ((df_fin['Preco_Venda'] - df_fin['Preco_Custo']) * df_fin['Qtd_Unidades']).sum()
-            st.metric("Lucro Potencial em Estoque", f"R$ {lucro:,.2f}")
-            st.plotly_chart(px.bar(df_fin, x='Nome', y='Qtd_Unidades', title="Volume em Estoque", template="plotly_dark"), use_container_width=True)
+            st.metric("Lucro Potencial", f"R$ {((df_fin['Preco_Venda']-df_fin['Preco_Custo'])*df_fin['Qtd_Unidades']).sum():,.2f}")
+            st.plotly_chart(px.bar(df_fin, x='Nome', y='Qtd_Unidades', color='Categoria', title="Estoque por Categoria", template="plotly_dark"), use_container_width=True)
