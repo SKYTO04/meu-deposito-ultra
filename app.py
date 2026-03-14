@@ -186,7 +186,7 @@ else:
                         df_e.loc[df_e['Nome'] == item['Nome'], 'Estoque_Total_Un'] -= 1
                         df_e.to_csv(DB_EST, index=False); registrar_log(n_logado, f"Venda Unid {item['Nome']}"); st.rerun()
 
-    # --- 🏗️ PILARES (VERSÃO PROFISSIONAL INTEGRADA) ---
+    # --- 🏗️ PILARES (VERSÃO PILHA VERTICAL) ---
     elif menu == "🏗️ Pilares (Amarração)":
         st.title("🏗️ Engenharia de Pilares")
         
@@ -198,7 +198,10 @@ else:
             if n_pilar:
                 c_atual = 1 if df_pil[df_pil['NomePilar']==n_pilar].empty else df_pil[df_pil['NomePilar']==n_pilar]['Camada'].max() + 1
                 at, fr = (3, 2) if c_atual % 2 != 0 else (2, 3)
-                st.info(f"🏗️ **Camada {c_atual}** detectada. Padrão de amarração: **{at}x{fr}**")
+                
+                if c_atual == 1: st.success(f"🌟 Iniciando BASE do Pilar: **{n_pilar}**")
+                else: st.info(f"⬆️ Montando sobre a Camada {c_atual-1}")
+                st.warning(f"📐 Padrão desta Camada: **{at}x{fr}**")
                 
                 lista_beb = ["Vazio"] + df_p[df_p['Categoria'] == cat_filtro]['Nome'].tolist()
                 beb_dict, av_dict = {}, {}
@@ -211,44 +214,42 @@ else:
                         beb_dict[pos] = st.selectbox(f"Bebida", lista_beb, key=f"p_{pos}", label_visibility="collapsed")
                         av_dict[pos] = st.number_input(f"Avulsos", 0, key=f"a_{pos}")
                 
-                if st.button("FINALIZAR MONTAGEM E REGISTRAR", use_container_width=True):
+                if st.button("FINALIZAR CAMADA E EMPILHAR", use_container_width=True):
                     regs = [[f"{n_pilar}_{c_atual}_{p}_{datetime.now().second}", n_pilar, c_atual, p, b, av_dict[p]] for p, b in beb_dict.items() if b != "Vazio"]
                     if regs:
                         pd.concat([df_pil, pd.DataFrame(regs, columns=df_pil.columns)]).to_csv(DB_PIL, index=False)
-                        registrar_log(n_logado, f"Montou Camada {c_atual} no Pilar {n_pilar}")
-                        st.success("Estrutura integrada ao inventário!")
+                        registrar_log(n_logado, f"Empilhou Camada {c_atual} no Pilar {n_pilar}")
                         st.rerun()
 
         st.markdown("---")
         for pilar in df_pil['NomePilar'].unique():
-            with st.container():
-                st.markdown(f"### 📍 Localização: {pilar}")
-                camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
-                for cam in camadas:
-                    dados_cam = df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)]
-                    total_un_cam = 0
-                    st.markdown(f"**Camada {cam}**")
+            st.markdown(f"### 📍 Pilar: {pilar}")
+            # MOSTRA DO TOPO PARA A BASE (Invertido para simular pilha real)
+            camadas = sorted(df_pil[df_pil['NomePilar'] == pilar]['Camada'].unique(), reverse=True)
+            
+            for cam in camadas:
+                dados_cam = df_pil[(df_pil['NomePilar'] == pilar) & (df_pil['Camada'] == cam)]
+                total_un_cam = 0
+                
+                with st.container():
+                    cor_b = "#58a6ff" if cam == max(camadas) else "#30363d"
+                    tag = "🔝 TOPO" if cam == max(camadas) else ("🧱 BASE" if cam == 1 else f"📦 Camada {cam}")
+                    st.markdown(f"<small style='color:{cor_b}; font-weight:bold;'>{tag}</small>", unsafe_allow_html=True)
+                    
                     cols = st.columns(5)
                     for _, r in dados_cam.iterrows():
-                        u_padrao, _ = get_config_bebida(r['Bebida'], df_p)
-                        total_un_cam += (u_padrao + r['Avulsos'])
+                        u_p, _ = get_config_bebida(r['Bebida'], df_p)
+                        total_un_cam += (u_p + r['Avulsos'])
                         with cols[int(r['Posicao'])-1]:
-                            card_html = f"""
-                            <div style="background-color:#1c2128; padding:10px; border-radius:12px; border:1px solid #30363d; text-align:center; min-height:95px; margin-bottom:5px;">
-                                <small style="color:#8b949e; font-size:0.7em;">POS {r['Posicao']}</small><br>
-                                <b style="font-size:0.85em; color:#e6edf3;">{r['Bebida']}</b><br>
-                                <span style="color:#238636; font-size:0.8em; font-weight:bold;">+{r['Avulsos']} UN</span>
-                            </div>
-                            """
-                            st.markdown(card_html, unsafe_allow_html=True)
+                            st.markdown(f'<div style="background-color:#1c2128; padding:8px; border-radius:10px; border:2px solid {cor_b}; text-align:center; margin-bottom:5px;"><b style="font-size:0.8em; color:#e6edf3;">{r["Bebida"]}</b><br><span style="color:#238636; font-size:0.75em;">+{r["Avulsos"]} UN</span></div>', unsafe_allow_html=True)
                             if st.button("BAIXA", key=f"out_{r['ID']}", use_container_width=True):
-                                df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_padrao + r['Avulsos'])
+                                df_e.loc[df_e['Nome'] == r['Bebida'], 'Estoque_Total_Un'] -= (u_p + r['Avulsos'])
                                 df_e.to_csv(DB_EST, index=False)
                                 df_pil[df_pil['ID'] != r['ID']].to_csv(DB_PIL, index=False)
-                                registrar_log(n_logado, f"Saída Pilar {pilar}: {r['Bebida']}")
-                                st.rerun()
-                    st.markdown(f"<p style='text-align:right; color:#8b949e; font-size:0.8em; margin-top:-10px;'>Subtotal Camada: {total_un_cam} un</p>", unsafe_allow_html=True)
-                    st.divider()
+                                registrar_log(n_logado, f"Saída Pilar {pilar}: {r['Bebida']}"); st.rerun()
+                    st.markdown(f"<p style='text-align:right; color:#8b949e; font-size:0.75em; margin-top:-5px;'>Subtotal: {total_un_cam} un</p>", unsafe_allow_html=True)
+                    if cam > 1: st.markdown("<div style='text-align:center; color:#30363d; margin-top:-10px; margin-bottom:10px;'>▼ apoiado sobre ▼</div>", unsafe_allow_html=True)
+            st.divider()
 
     # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque Geral":
