@@ -5,10 +5,9 @@ import os
 import base64
 from PIL import Image
 import io
-import time
 
 # =================================================================
-# 1. DESIGN PREMIUM - DARK PRESTIGE V225 (ULTRA STABLE ANIMATION)
+# 1. DESIGN PREMIUM - DARK PRESTIGE V230 (STABLE & UNABRIDGED)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu", page_icon="💎", layout="wide", initial_sidebar_state="expanded")
 
@@ -20,18 +19,6 @@ st.markdown("""
         border-radius: 12px; padding: 18px; margin-bottom: 12px;
         border-left: 5px solid #58a6ff;
     }
-    .welcome-container {
-        display: flex; flex-direction: column; align-items: center;
-        justify-content: center; height: 80vh; text-align: center;
-        background-color: #0E1117;
-    }
-    .welcome-text {
-        font-size: 3.5em; font-weight: bold; color: #58a6ff;
-        text-shadow: 0px 0px 20px rgba(88, 166, 255, 0.5);
-        animation: fadeIn 1.5s;
-    }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    .avatar-round { border-radius: 50%; border: 3px solid #58a6ff; object-fit: cover; }
     .metric-card {
         background: #1c2128; border: 1px solid #30363d; border-radius: 10px;
         padding: 15px; text-align: center;
@@ -45,16 +32,22 @@ st.markdown("""
         margin-bottom: 8px; border-left: 4px solid #d29922;
     }
     .task-done { border-left: 4px solid #238636; opacity: 0.7; }
+    .avatar-round { border-radius: 50%; border: 3px solid #58a6ff; object-fit: cover; }
+    .welcome-banner {
+        background: linear-gradient(90deg, #161b22 0%, #0e1117 100%);
+        padding: 20px; border-radius: 15px; border: 1px solid #30363d;
+        margin-bottom: 25px; border-left: 8px solid #58a6ff;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. INFRA E BANCO DE DADOS (SEM CORTES)
+# 2. BANCO DE DADOS (ESTRUTURA COMPLETA)
 # =================================================================
 DB_FILES = {
-    "prod": "prod_f.csv", "est": "est_f.csv", "pil": "pil_f.csv",
-    "usr": "usr_f.csv", "cas": "cas_f.csv", "tar": "tar_f.csv", 
-    "cat": "cat_f.csv", "patio": "patio_f.csv", "meta": "meta_f.csv"
+    "prod": "prod_v3.csv", "est": "est_v3.csv", "pil": "pil_v3.csv",
+    "usr": "usr_v3.csv", "cas": "cas_v3.csv", "tar": "tar_v3.csv", 
+    "cat": "cat_v3.csv", "patio": "patio_v3.csv", "meta": "meta_v3.csv"
 }
 
 def init_db():
@@ -92,101 +85,84 @@ def get_config(nome, df_p):
     return 12, "Fardo"
 
 # =================================================================
-# 3. LÓGICA DE NAVEGAÇÃO E ANIMAÇÃO
+# 3. CONTROLE DE ACESSO
 # =================================================================
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
-if 'em_transicao' not in st.session_state: st.session_state['em_transicao'] = False
 
-# TELA DE LOGIN
-if not st.session_state['autenticado'] and not st.session_state['em_transicao']:
-    st.markdown("<h1 style='text-align: center; margin-top: 10vh;'>💎 Adega Pacaembu</h1>", unsafe_allow_html=True)
+if not st.session_state['autenticado']:
+    st.markdown("<h1 style='text-align: center; margin-top: 15vh;'>💎 Adega Pacaembu</h1>", unsafe_allow_html=True)
     with st.columns(3)[1]:
         with st.form("login_form"):
             u = st.text_input("Usuário").strip()
             s = st.text_input("Senha", type="password").strip()
-            if st.form_submit_button("ENTRAR NO SISTEMA"):
+            if st.form_submit_button("ACESSAR"):
                 df_u = pd.read_csv(DB_FILES["usr"])
                 match = df_u[(df_u['user'] == u) & (df_u['senha'].astype(str) == s)]
                 if not match.empty:
-                    st.session_state.update({
-                        'em_transicao': True, 
-                        'u_l': u, 
-                        'u_n': match.iloc[0]['nome'], 
-                        'u_a': (match.iloc[0]['is_admin']=='SIM')
-                    })
+                    st.session_state.update({'autenticado': True, 'u_l': u, 'u_n': match.iloc[0]['nome'], 'u_a': (match.iloc[0]['is_admin']=='SIM')})
                     st.rerun()
                 else: st.error("Acesso Negado")
-
-# TELA DE ANIMAÇÃO (O SEGREDO PARA NÃO FICAR BRANCO)
-elif st.session_state['em_transicao']:
-    st.markdown(f"""
-        <div class="welcome-container">
-            <div class="welcome-text">Bem-vindo, {st.session_state['u_n']}! 💎</div>
-        </div>
-    """, unsafe_allow_html=True)
-    time.sleep(2.0)
-    st.session_state['em_transicao'] = False
-    st.session_state['autenticado'] = True
-    st.rerun()
-
-# SISTEMA PRINCIPAL
-elif st.session_state['autenticado']:
+else:
+    # CARREGAMENTO DOS DADOS
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
     df_p, df_e, df_pil, df_cas, df_usr, df_tar, df_cat, df_patio = pd.read_csv(DB_FILES["prod"]), pd.read_csv(DB_FILES["est"]), pd.read_csv(DB_FILES["pil"]), pd.read_csv(DB_FILES["cas"]), pd.read_csv(DB_FILES["usr"]), pd.read_csv(DB_FILES["tar"]), pd.read_csv(DB_FILES["cat"]), pd.read_csv(DB_FILES["patio"])
 
-    # --- SIDEBAR ---
+    # SIDEBAR
     row_u = df_usr[df_usr['user'] == u_logado].iloc[0]
     src = f"data:image/png;base64,{row_u['foto']}" if row_u['foto'] else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.sidebar.markdown(f'<center><img src="{src}" class="avatar-round" width="80" height="80"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
     menu = st.sidebar.radio("Navegação", ["🏠 Dashboard", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas Diárias", "👥 Equipe", "⚙️ Perfil"])
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
-    # --- 🏠 DASHBOARD ---
+    # --- 🏠 DASHBOARD (BEM-VINDO AQUI) ---
     if menu == "🏠 Dashboard":
-        st.title("🚀 Dashboard")
+        st.markdown(f'<div class="welcome-banner"><h1>Bem-vindo, {n_logado}! 💎</h1><p>{datetime.now().strftime("%d de %B de %Y")}</p></div>', unsafe_allow_html=True)
+        
         val_est = (pd.merge(df_e, df_p, on="Nome")['Estoque_Total_Un'] * pd.merge(df_e, df_p, on="Nome")['Preco_Unitario']).sum()
         c1, c2, c3 = st.columns(3)
-        c1.markdown(f'<div class="metric-card"><h4>Patrimônio</h4><h2 style="color:#238636;">R$ {val_est:,.2f}</h2></div>', unsafe_allow_html=True)
-        c2.markdown(f'<div class="metric-card"><h4>Pátio (Vazios)</h4><h2>{int(df_patio["Total_Vazio"].sum())} un</h2></div>', unsafe_allow_html=True)
-        c3.markdown(f'<div class="metric-card"><h4>Checklist</h4><h2>{len(df_tar[df_tar["Status"]=="OK"])}/{len(df_tar)}</h2></div>', unsafe_allow_html=True)
+        c1.markdown(f'<div class="metric-card"><h4>Patrimônio em Estoque</h4><h2 style="color:#238636;">R$ {val_est:,.2f}</h2></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="metric-card"><h4>Vasilhames no Pátio</h4><h2>{int(df_patio["Total_Vazio"].sum())} un</h2></div>', unsafe_allow_html=True)
+        c3.markdown(f'<div class="metric-card"><h4>Tarefas Concluídas</h4><h2>{len(df_tar[df_tar["Status"]=="OK"])}/{len(df_tar)}</h2></div>', unsafe_allow_html=True)
 
     # --- 📦 ESTOQUE (COMPLETO) ---
     elif menu == "📦 Estoque":
-        st.title("📦 Inventário")
-        with st.form("f_est"):
+        st.title("📦 Gestão de Estoque")
+        with st.form("estoque_lancar"):
             c1, c2, c3 = st.columns([2,1,1])
-            s_i = c1.selectbox("Item", df_p['Nome'].unique())
-            op = c2.radio("Operação", ["ENTRADA", "SAÍDA"], horizontal=True)
-            qtd = c3.number_input("Qtd (Unidades)", 1)
+            sel_i = c1.selectbox("Item", df_p['Nome'].unique())
+            op = c2.radio("Ação", ["ENTRADA", "SAÍDA"], horizontal=True)
+            qtd = c3.number_input("Qtd Unidades", 1)
             if st.form_submit_button("LANÇAR"):
-                if op == "SAÍDA": df_e.loc[df_e['Nome'] == s_i, 'Estoque_Total_Un'] -= qtd
-                else: df_e.loc[df_e['Nome'] == s_i, 'Estoque_Total_Un'] += qtd
+                if op == "SAÍDA": df_e.loc[df_e['Nome'] == sel_i, 'Estoque_Total_Un'] -= qtd
+                else: df_e.loc[df_e['Nome'] == sel_i, 'Estoque_Total_Un'] += qtd
                 df_e.to_csv(DB_FILES["est"], index=False); st.rerun()
-        
-        df_j = pd.merge(df_e, df_p, on="Nome")
-        for _, r in df_j.iterrows():
-            u_b, t_u = get_config(r['Nome'], df_p)
-            f, a = r['Estoque_Total_Un'] // u_b, r['Estoque_Total_Un'] % u_b
-            st.markdown(f'<div class="card"><b>{r["Nome"]}</b><br>{int(f)} {t_u}(s) e {int(a)} un | <span style="color:#238636;">R$ {r["Estoque_Total_Un"]*r["Preco_Unitario"]:,.2f}</span></div>', unsafe_allow_html=True)
 
-    # --- 🏗️ PILARES (LÓGICA 3/2 INTEGRAL) ---
+        st.divider()
+        df_full = pd.merge(df_e, df_p, on="Nome")
+        for _, r in df_full.iterrows():
+            u_b, tipo = get_config(r['Nome'], df_p)
+            f, a = r['Estoque_Total_Un'] // u_b, r['Estoque_Total_Un'] % u_b
+            st.markdown(f'<div class="card"><b>{r["Nome"]}</b> ({r["Categoria"]})<br>{int(f)} {tipo}(s) e {int(a)} un. | <span style="color:#238636;">R$ {r["Estoque_Total_Un"]*r["Preco_Unitario"]:,.2f}</span></div>', unsafe_allow_html=True)
+
+    # --- 🏗️ PILARES (3/2 ZIGUE-ZAGUE) ---
     elif menu == "🏗️ Pilares":
-        st.title("🏗️ Pilares")
+        st.title("🏗️ Controle de Pilares")
         with st.expander("🧱 Adicionar Camada"):
-            p_sel = st.selectbox("Pilar", ["+ NOVO PILAR"] + sorted(df_pil['NomePilar'].unique().tolist()))
-            n_pilar = st.text_input("Nome").upper() if p_sel == "+ NOVO PILAR" else p_sel
+            p_sel = st.selectbox("Pilar", ["+ NOVO"] + sorted(df_pil['NomePilar'].unique().tolist()))
+            n_pilar = st.text_input("Nome").upper() if p_sel == "+ NOVO" else p_sel
             if n_pilar:
                 cat_f = st.selectbox("Categoria", ["Romarinho", "Refrigerante"] + df_cat['Nome'].tolist())
                 prods_f = df_p[df_p['Categoria'] == cat_f]['Nome'].tolist()
                 max_c = 0 if df_pil[df_pil['NomePilar']==n_pilar].empty else df_pil[df_pil['NomePilar']==n_pilar]['Camada'].max()
                 cam_at = int(max_c) + 1
                 atrav, frent = (3, 2) if cam_at % 2 != 0 else (2, 3)
+                st.info(f"Camada {cam_at}: {atrav} atrás e {frent} na frente")
                 cols_p = st.columns(5); c_data = []
                 for i in range(atrav + frent):
-                    b = cols_p[i].selectbox(f"Pos {i+1}", ["Vazio"] + prods_f, key=f"p_{i}")
+                    b = cols_p[i].selectbox(f"P {i+1}", ["Vazio"] + prods_f, key=f"p_{i}")
                     a = cols_p[i].number_input("Avs", 0, key=f"a_{i}")
                     if b != "Vazio": c_data.append([f"P_{datetime.now().microsecond}_{i}", n_pilar, cam_at, i+1, b, a])
-                if st.button("SALVAR"): pd.concat([df_pil, pd.DataFrame(c_data, columns=df_pil.columns)]).to_csv(DB_FILES["pil"], index=False); st.rerun()
+                if st.button("SALVAR CAMADA"): pd.concat([df_pil, pd.DataFrame(c_data, columns=df_pil.columns)]).to_csv(DB_FILES["pil"], index=False); st.rerun()
 
         for p in df_pil['NomePilar'].unique():
             st.markdown(f'<div class="pilar-frame"><h3>📍 {p}</h3>', unsafe_allow_html=True)
@@ -201,34 +177,39 @@ elif st.session_state['autenticado']:
                         df_pil[df_pil['ID'] != r['ID']].to_csv(DB_FILES["pil"], index=False); st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- 🍶 CASCOS (DEVEDORES E PÁTIO INTEGRADOS) ---
+    # --- 🍶 CASCOS (DEVEDORES, PÁTIO E HISTÓRICO) ---
     elif menu == "🍶 Cascos":
-        st.title("🍶 Cascos")
-        t1, t2, t3 = st.tabs(["🔴 Devedores", "🏗️ Pátio", "📜 Histórico"])
+        st.title("🍶 Gestão de Vasilhames")
+        t1, t2, t3 = st.tabs(["🔴 Clientes Devedores", "🏗️ Controle do Pátio", "📜 Histórico"])
         with t1:
-            with st.form("f_c"):
+            with st.form("cad_casco"):
                 c1, c2, c3 = st.columns(3)
-                cli, vasi, qv = c1.text_input("Cliente").upper(), c2.selectbox("Vasilhame", ["Romarinho", "600ml", "Coca 1L", "Coca 2L"]), c3.number_input("Qtd", 1)
-                if st.form_submit_button("LANÇAR"):
+                cli, vasi, qv = c1.text_input("Cliente").upper(), c2.selectbox("Vasilhame", ["Romarinho", "600ml", "Coca 1L", "Coca 2L"]), c3.number_input("Quantidade", 1)
+                if st.form_submit_button("Lançar Dívida"):
                     pd.concat([df_cas, pd.DataFrame([[f"C{datetime.now().microsecond}", datetime.now().strftime("%d/%m"), cli, vasi, qv, "DEVE", "", ""]], columns=df_cas.columns)]).to_csv(DB_FILES["cas"], index=False); st.rerun()
             for i, r in df_cas[df_cas['Status']=="DEVE"].iterrows():
                 col_a, col_b = st.columns([4,1])
                 col_a.warning(f"📍 {r['Cliente']} deve {r['Quantidade']} {r['Vasilhame']}")
-                if col_b.button("BAIXA", key=f"bx_{i}"):
+                if col_b.button("RECEBER", key=f"bx_{i}"):
                     df_cas.at[i, 'Status'] = "PAGO"; df_cas.at[i, 'QuemBaixou'] = n_logado; df_cas.at[i, 'HoraBaixa'] = datetime.now().strftime("%H:%M")
                     df_cas.to_csv(DB_FILES["cas"], index=False)
                     df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] += r['Quantidade']; df_patio.to_csv(DB_FILES["patio"], index=False); st.rerun()
         with t2:
+            st.subheader("Estoque Físico de Vazios")
             for i, r in df_patio.iterrows():
-                st.write(f"**{r['Vasilhame']}:** {int(r['Total_Vazio'])} un")
+                c_p1, c_p2 = st.columns([3,1])
+                c_p1.write(f"**{r['Vasilhame']}:** {int(r['Total_Vazio'])} un")
+                if c_p2.button("Ajustar", key=f"adj_{i}"): pass # Lógica de ajuste manual aqui se necessário
+        with t3:
+            st.table(df_cas[df_cas['Status']=="PAGO"].tail(10))
 
     # --- ✨ CADASTRO ---
     elif menu == "✨ Cadastro":
-        st.title("✨ Cadastro")
+        st.title("✨ Cadastro de Itens")
         with st.form("f_cad"):
             n, c, p = st.columns(3)
-            ni, ci, pi = n.text_input("Nome").upper(), c.selectbox("Categoria", ["Romarinho", "Refrigerante"] + df_cat['Nome'].tolist()), p.number_input("Preço", 0.0)
-            if st.form_submit_button("SALVAR"):
+            ni, ci, pi = n.text_input("Nome Produto").upper(), c.selectbox("Categoria", ["Romarinho", "Refrigerante"] + df_cat['Nome'].tolist()), p.number_input("Preço", 0.0)
+            if st.form_submit_button("CADASTRAR"):
                 if ni and ni not in df_p['Nome'].values:
                     pd.concat([df_p, pd.DataFrame([[ci, ni, pi]], columns=df_p.columns)]).to_csv(DB_FILES["prod"], index=False)
                     pd.concat([df_e, pd.DataFrame([[ni, 0]], columns=df_e.columns)]).to_csv(DB_FILES["est"], index=False); st.rerun()
@@ -236,6 +217,11 @@ elif st.session_state['autenticado']:
     # --- 📋 TAREFAS ---
     elif menu == "📋 Tarefas Diárias":
         st.title("📋 Checklist")
+        if is_adm:
+            with st.expander("Nova Tarefa"):
+                nt = st.text_input("Tarefa")
+                if st.button("Salvar"):
+                    pd.concat([df_tar, pd.DataFrame([[f"T{datetime.now().microsecond}", nt, "PENDENTE", "", ""]], columns=df_tar.columns)]).to_csv(DB_FILES["tar"], index=False); st.rerun()
         for i, r in df_tar.iterrows():
             st.markdown(f'<div class="task-card {"task-done" if r["Status"]=="OK" else ""}"><b>{r["Tarefa"]}</b></div>', unsafe_allow_html=True)
             if r['Status'] == "PENDENTE" and st.button("FEITO", key=f"t_{i}"):
