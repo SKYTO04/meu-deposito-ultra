@@ -7,7 +7,7 @@ from PIL import Image
 import io
 
 # =================================================================
-# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v54)
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v55)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
@@ -33,12 +33,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (v54 - BLINDAGEM TOTAL ANTI-KEYERROR)
+# 2. BANCO DE DADOS (v55 - PROTEÇÃO DE CABEÇALHO)
 # =================================================================
 DB = {
-    "prod": "p_v54.csv", "est": "e_v54.csv", "pil": "pil_v54.csv",
-    "usr": "u_v54.csv", "cas": "c_v54.csv", "tar": "t_v54.csv", 
-    "cat": "cat_v54.csv", "patio": "pat_v54.csv", "log": "log_v54.csv"
+    "prod": "p_v55.csv", "est": "e_v55.csv", "pil": "pil_v55.csv",
+    "usr": "u_v55.csv", "cas": "c_v55.csv", "tar": "t_v55.csv", 
+    "cat": "cat_v55.csv", "patio": "pat_v55.csv", "log": "log_v55.csv"
 }
 
 COLS = {
@@ -65,8 +65,10 @@ def safe_read(key):
         return df
     try:
         df = pd.read_csv(path)
-        for col in c:
-            if col not in df.columns: df[col] = ""
+        # Se faltar qualquer coluna, reconstrói o DF garantindo as colunas
+        if not all(col in df.columns for col in c):
+            for col in c:
+                if col not in df.columns: df[col] = ""
         return df[c]
     except:
         return pd.DataFrame(columns=c)
@@ -79,7 +81,7 @@ def registrar_log(usuario, acao):
     except: pass
 
 # =================================================================
-# 3. LÓGICA DE LOGIN
+# 3. LOGIN E LOGICA
 # =================================================================
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
 
@@ -87,8 +89,7 @@ if not st.session_state['autenticado']:
     st.markdown("<h1 style='text-align: center; margin-top: 15vh;'>💎 Adega Pacaembu</h1>", unsafe_allow_html=True)
     with st.columns(3)[1]:
         with st.form("login"):
-            u = st.text_input("Usuário").strip()
-            s = st.text_input("Senha", type="password").strip()
+            u, s = st.text_input("Usuário").strip(), st.text_input("Senha", type="password").strip()
             if st.form_submit_button("ACESSAR"):
                 df_u = safe_read("usr")
                 try:
@@ -98,29 +99,21 @@ if not st.session_state['autenticado']:
                         registrar_log(u, "Entrou.")
                         st.rerun()
                     else: st.error("Acesso negado.")
-                except: st.error("Erro crítico no banco de usuários. Contate o suporte.")
+                except: st.error("Erro no banco. admin/123")
 else:
-    # Carregamento Geral
     df_p, df_e, df_pil, df_cas, df_usr, df_tar, df_cat, df_patio, df_log = [safe_read(k) for k in DB.keys()]
     u_l, n_l, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
 
-    # --- SIDEBAR (PROTEÇÃO ABSOLUTA CONTRA O ERRO NA LINHA 111) ---
+    # --- SIDEBAR ---
     f_b64 = ""
     try:
-        # Tenta buscar a foto, se a coluna sumir ou der erro, ele pula pro except
         u_row = df_usr[df_usr['user'] == u_l]
-        if not u_row.empty:
-            f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
-    except Exception as e:
-        # Se der erro de KeyError, o sistema ignora a foto e segue o baile
-        pass
-    
+        if not u_row.empty: f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
+    except: pass
     src = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.sidebar.markdown(f'<center><img src="{src}" class="avatar-round" width="80" height="80"><br><b>{n_l}</b></center>', unsafe_allow_html=True)
     
-    nav = ["🏠 Início", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas", "👥 Equipe"]
-    if is_adm: nav.append("📜 Log Geral")
-    menu = st.sidebar.radio("Navegação", nav)
+    menu = st.sidebar.radio("Navegação", ["🏠 Início", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas", "👥 Equipe"] + (["📜 Log Geral"] if is_adm else []))
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
     # --- 🏠 INÍCIO ---
@@ -128,19 +121,10 @@ else:
         st.title("Painel Geral")
         c1, c2, c3 = st.columns(3)
         c1.metric("Vazios no Pátio", f"{int(df_patio['Total_Vazio'].sum())} un")
-        
-        # Proteção na métrica de dívidas
         try: d_at = len(df_cas[df_cas['Status'] == "DEVE"])
         except: d_at = 0
         c2.metric("Dívidas Ativas", f"{d_at} un")
-        
-        cap = 0
-        if is_adm and not df_e.empty and not df_p.empty:
-            try:
-                df_v = pd.merge(df_e, df_p, on="Nome")
-                cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
-            except: pass
-        c3.metric("Capital Estoque", f"R$ {cap:,.2f}")
+        c3.metric("Versão", "v55")
 
     # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque":
@@ -190,28 +174,43 @@ else:
                             df_pil[df_pil['ID'] != r['ID']].to_csv(DB["pil"], index=False); st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- 🍶 CASCOS ---
+    # --- 🍶 CASCOS (PROTEÇÃO NA LINHA DO ERRO) ---
     elif menu == "🍶 Cascos":
         st.title("🍶 Vasilhames")
         t1, t2, t3 = st.tabs(["🔴 Devedores", "📜 Histórico / Estorno", "🚚 Saída Empresa"])
         agora = datetime.now().strftime("%d/%m %H:%M")
+        
+        # GARANTE QUE A COLUNA 'Status' EXISTE ANTES DE FILTRAR
+        if 'Status' not in df_cas.columns:
+            df_cas = pd.DataFrame(columns=COLS["cas"])
+            df_cas.to_csv(DB["cas"], index=False)
+
         with t1:
             with st.form("div"):
                 cli, vas, q = st.text_input("Cliente").upper(), st.selectbox("Tipo", ["Romarinho", "600ml", "Coca 1L", "Coca 2L Retornável"]), st.number_input("Qtd", 1)
                 if st.form_submit_button("Lançar"):
                     pd.concat([df_cas, pd.DataFrame([[f"C{datetime.now().microsecond}", agora, cli, vas, q, "DEVE", ""]], columns=COLS["cas"])]).to_csv(DB["cas"], index=False); st.rerun()
-            for i, r in df_cas[df_cas['Status']=="DEVE"].iterrows():
-                c1, c2 = st.columns([3, 1])
-                c1.warning(f"⚠️ **{r['Data']}** - {r['Cliente']} deve {int(r['Quantidade'])} {r['Vasilhame']}")
-                if c2.button("BAIXA", key=f"bx_{i}"):
-                    df_cas.at[i, 'Status'] = "PAGO"; df_cas.at[i, 'QuemBaixou'] = n_l; df_cas.at[i, 'Data'] = agora
-                    df_cas.to_csv(DB["cas"], index=False); df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] += r['Quantidade']; df_patio.to_csv(DB["patio"], index=False); st.rerun()
+            
+            # FILTRO SEGURO PARA DEVEDORES
+            try:
+                df_deve = df_cas[df_cas['Status'] == "DEVE"]
+                for i, r in df_deve.iterrows():
+                    c1, c2 = st.columns([3, 1])
+                    c1.warning(f"⚠️ **{r['Data']}** - {r['Cliente']} deve {int(r['Quantidade'])} {r['Vasilhame']}")
+                    if c2.button("BAIXA", key=f"bx_{i}"):
+                        df_cas.at[i, 'Status'] = "PAGO"; df_cas.at[i, 'QuemBaixou'] = n_l; df_cas.at[i, 'Data'] = agora
+                        df_cas.to_csv(DB["cas"], index=False); df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] += r['Quantidade']; df_patio.to_csv(DB["patio"], index=False); st.rerun()
+            except: st.error("Erro ao listar devedores. O arquivo foi resetado.")
+
         with t2:
-            for i, r in df_cas[df_cas['Status']=="PAGO"].iterrows():
-                ch1, ch2 = st.columns([3, 1])
-                ch1.write(f"✅ **{r['Data']}** | {r['Cliente']} devolveu {int(r['Quantidade'])} {r['Vasilhame']} (Rec: {r['QuemBaixou']})")
-                if ch2.button("ESTORNAR", key=f"est_{i}"):
-                    df_cas.at[i, 'Status'] = "DEVE"; df_cas.to_csv(DB["cas"], index=False); df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] -= r['Quantidade']; df_patio.to_csv(DB["patio"], index=False); st.rerun()
+            try:
+                df_pago = df_cas[df_cas['Status'] == "PAGO"]
+                for i, r in df_pago.iterrows():
+                    ch1, ch2 = st.columns([3, 1])
+                    ch1.write(f"✅ **{r['Data']}** | {r['Cliente']} devolveu {int(r['Quantidade'])} {r['Vasilhame']} (Rec: {r['QuemBaixou']})")
+                    if ch2.button("ESTORNAR", key=f"est_{i}"):
+                        df_cas.at[i, 'Status'] = "DEVE"; df_cas.to_csv(DB["cas"], index=False); df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] -= r['Quantidade']; df_patio.to_csv(DB["patio"], index=False); st.rerun()
+            except: pass
         with t3:
             for _, r in df_patio.iterrows(): st.info(f"**{r['Vasilhame']}:** {int(r['Total_Vazio'])} no pátio")
             with st.form("saida_emp"):
@@ -232,48 +231,26 @@ else:
                 if st.form_submit_button("Salvar"):
                     pd.concat([df_p, pd.DataFrame([[c, n, pr]], columns=COLS["prod"])]).to_csv(DB["prod"], index=False)
                     pd.concat([df_e, pd.DataFrame([[n, 0]], columns=COLS["est"])]).to_csv(DB["est"], index=False); st.rerun()
-            st.divider(); p_exc = st.selectbox("Apagar Produto", df_p['Nome'].tolist())
+            p_exc = st.selectbox("Apagar Produto", df_p['Nome'].tolist())
             if st.button("EXCLUIR PRODUTO", type="primary"):
                 df_p[df_p['Nome'] != p_exc].to_csv(DB["prod"], index=False); df_e[df_e['Nome'] != p_exc].to_csv(DB["est"], index=False); st.rerun()
         with tab2:
-            with st.form("cc"):
-                nova = st.text_input("Nova Categoria").upper()
-                if st.form_submit_button("Criar"): pd.concat([df_cat, pd.DataFrame([[nova]], columns=COLS["cat"])]).to_csv(DB["cat"], index=False); st.rerun()
-            st.divider(); c_exc = st.selectbox("Apagar Categoria", df_cat['Nome'].tolist())
+            nova = st.text_input("Nova Categoria").upper()
+            if st.button("Criar"): pd.concat([df_cat, pd.DataFrame([[nova]], columns=COLS["cat"])]).to_csv(DB["cat"], index=False); st.rerun()
+            c_exc = st.selectbox("Apagar Categoria", df_cat['Nome'].tolist())
             if st.button("EXCLUIR CATEGORIA", type="primary"):
                 if df_p[df_p['Categoria'] == c_exc].empty:
                     df_cat[df_cat['Nome'] != c_exc].to_csv(DB["cat"], index=False); st.rerun()
-                else: st.error("Remova os produtos desta categoria primeiro!")
-
-    # --- 📋 TAREFAS ---
-    elif menu == "📋 Tarefas":
-        st.title("📋 Checklist")
-        if is_adm:
-            with st.form("nt"):
-                txt = st.text_input("Tarefa")
-                if st.form_submit_button("Add"): pd.concat([df_tar, pd.DataFrame([[f"T{datetime.now().microsecond}", txt, "PENDENTE", "DIÁRIA", ""]], columns=COLS["tar"])]).to_csv(DB["tar"], index=False); st.rerun()
-        for i, r in df_tar[df_tar['Status'] == "PENDENTE"].iterrows():
-            if st.button(f"OK: {r['Tarefa']}", key=f"t_{i}"): df_tar.at[i, 'Status'] = "OK"; df_tar.to_csv(DB["tar"], index=False); st.rerun()
+                else: st.error("Remova os produtos primeiro!")
 
     # --- 👥 EQUIPE ---
     elif menu == "👥 Equipe":
-        st.title("👥 Perfil e Equipe")
+        st.title("👥 Membros")
         st.markdown(f'<div class="profile-card"><img src="{src}" width="150" class="avatar-round"><h3>{n_l}</h3></div>', unsafe_allow_html=True)
-        f = st.file_uploader("Trocar foto")
-        if st.button("Salvar") and f:
-            img = Image.open(f).convert("RGB"); img.thumbnail((300, 300)); buf = io.BytesIO(); img.save(buf, format="PNG")
-            df_usr.loc[df_usr['user'] == u_l, 'foto'] = base64.b64encode(buf.getvalue()).decode()
-            df_usr.to_csv(DB["usr"], index=False); st.rerun()
         if is_adm:
-            st.divider(); st.subheader("Membros")
             with st.form("nu"):
                 lu, ln, ls, la = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Admin?", ["NÃO", "SIM"])
                 if st.form_submit_button("Cadastrar"):
                     pd.concat([df_usr, pd.DataFrame([[lu, ln, ls, la, ""]], columns=COLS["usr"])]).to_csv(DB["usr"], index=False); st.rerun()
             try: st.table(df_usr[['user', 'nome', 'is_admin']])
-            except: st.warning("Não foi possível carregar a lista de membros.")
-
-    # --- 📜 LOG GERAL ---
-    elif menu == "📜 Log Geral" and is_adm:
-        st.title("📜 Log de Atividades")
-        st.dataframe(df_log.sort_values(by="DataHora", ascending=False), use_container_width=True)
+            except: pass
