@@ -7,7 +7,7 @@ from PIL import Image
 import io
 
 # =================================================================
-# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v50)
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v51)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
@@ -33,12 +33,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (v50 - BLINDAGEM TOTAL)
+# 2. BANCO DE DADOS (v51 - BLINDAGEM CONTRA KEYERROR)
 # =================================================================
 DB = {
-    "prod": "p_v50.csv", "est": "e_v50.csv", "pil": "pil_v50.csv",
-    "usr": "u_v50.csv", "cas": "c_v50.csv", "tar": "t_v50.csv", 
-    "cat": "cat_v50.csv", "patio": "pat_v50.csv", "log": "log_v50.csv"
+    "prod": "p_v51.csv", "est": "e_v51.csv", "pil": "pil_v51.csv",
+    "usr": "u_v51.csv", "cas": "c_v51.csv", "tar": "t_v51.csv", 
+    "cat": "cat_v51.csv", "patio": "pat_v51.csv", "log": "log_v51.csv"
 }
 
 COLS = {
@@ -65,6 +65,7 @@ def safe_read(key):
         return df
     try:
         df = pd.read_csv(path)
+        # Se as colunas estiverem erradas, ele reseta o arquivo para o padrão correto
         if not all(c in df.columns for c in cols):
             df = pd.DataFrame(columns=cols)
             if path == DB["usr"]: df = pd.DataFrame([['admin', 'Gerente', '123', 'SIM', '']], columns=cols)
@@ -81,7 +82,7 @@ def registrar_log(usuario, acao):
     except: pass
 
 # =================================================================
-# 3. LÓGICA DE LOGIN
+# 3. CONTROLE DE ACESSO
 # =================================================================
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
 
@@ -89,8 +90,7 @@ if not st.session_state['autenticado']:
     st.markdown("<h1 style='text-align: center; margin-top: 15vh;'>💎 Adega Pacaembu</h1>", unsafe_allow_html=True)
     with st.columns(3)[1]:
         with st.form("login"):
-            u = st.text_input("Usuário").strip()
-            s = st.text_input("Senha", type="password").strip()
+            u, s = st.text_input("Usuário").strip(), st.text_input("Senha", type="password").strip()
             if st.form_submit_button("ACESSAR"):
                 df_u = safe_read("usr")
                 match = df_u[df_u['user'].astype(str) == str(u)]
@@ -100,16 +100,15 @@ if not st.session_state['autenticado']:
                     st.rerun()
                 else: st.error("Acesso negado.")
 else:
-    # Carregamento Seguro
     df_p, df_e, df_pil, df_cas, df_usr, df_tar, df_cat, df_patio, df_log = [safe_read(k) for k in DB.keys()]
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
 
-    # --- SIDEBAR (Proteção contra o erro KeyError 'user') ---
+    # --- SIDEBAR ---
     f_b64 = ""
-    if 'user' in df_usr.columns:
+    try:
         u_row = df_usr[df_usr['user'] == u_logado]
-        if not u_row.empty:
-            f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
+        if not u_row.empty: f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
+    except: pass
     
     src = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.sidebar.markdown(f'<center><img src="{src}" class="avatar-round" width="80" height="80"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
@@ -119,17 +118,27 @@ else:
     menu = st.sidebar.radio("Navegação", nav)
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
-    # --- 🏠 INÍCIO ---
+    # --- 🏠 INÍCIO (BLINDAGEM DA LINHA 127) ---
     if menu == "🏠 Início":
         st.title("Painel Geral")
         c1, c2, c3 = st.columns(3)
         c1.metric("Vazios no Pátio", f"{int(df_patio['Total_Vazio'].sum())} un")
-        c2.metric("Dívidas Ativas", len(df_cas[df_cas['Status'] == "DEVE"]))
+        
+        # SOLUÇÃO PARA O ERRO DA LINHA 127
+        div_ativas = 0
+        try:
+            if 'Status' in df_cas.columns:
+                div_ativas = len(df_cas[df_cas['Status'] == "DEVE"])
+        except: pass
+        c2.metric("Dívidas Ativas", f"{div_ativas} clientes")
+        
         cap = 0
-        if is_adm and not df_e.empty and not df_p.empty:
-            df_v = pd.merge(df_e, df_p, on="Nome")
-            cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
-        c3.metric("Capital em Estoque", f"R$ {cap:,.2f}")
+        try:
+            if is_adm and not df_e.empty and not df_p.empty:
+                df_v = pd.merge(df_e, df_p, on="Nome")
+                cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
+        except: pass
+        c3.metric("Capital Estoque", f"R$ {cap:,.2f}")
 
     # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque":
