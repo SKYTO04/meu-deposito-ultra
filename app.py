@@ -8,7 +8,7 @@ import io
 import random
 
 # =================================================================
-# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v65)
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v65 - EQUIPE PRO)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
@@ -16,22 +16,24 @@ st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #E0E0E0; }
     [data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
-    .product-card {
+    .product-card, .team-card {
         background: #1c2128; border: 1px solid #30363d;
         border-radius: 12px; padding: 20px; margin-bottom: 15px;
-        border-top: 5px solid #58a6ff; text-align: center;
+        border-top: 5px solid #58a6ff;
     }
+    .team-card { text-align: center; border-top: 5px solid #ab7ffb; }
     .stock-low { border: 2px solid #ff4b4b !important; border-top: 5px solid #ff4b4b !important; }
     .profile-card {
         background: #1c2128; border: 1px solid #30363d; border-radius: 20px;
         padding: 30px; text-align: center; border-bottom: 4px solid #58a6ff;
     }
     .avatar-round { border-radius: 50%; border: 4px solid #58a6ff; object-fit: cover; margin-bottom: 15px; }
+    .avatar-team { border-radius: 50%; border: 2px solid #ab7ffb; object-fit: cover; margin-bottom: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (v65)
+# 2. BANCO DE DADOS (Mantendo v65 para preservar seus dados)
 # =================================================================
 VERSION = "v65"
 DB = {k: f"{k}_{VERSION}.csv" for k in ["prod", "est", "pil", "usr", "cas", "tar", "cat", "patio", "log"]}
@@ -66,7 +68,7 @@ def safe_read(key):
     except: return pd.DataFrame(columns=c)
 
 # =================================================================
-# 3. INTERFACE
+# 3. INTERFACE PRINCIPAL
 # =================================================================
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
 
@@ -92,12 +94,14 @@ else:
         u_row = df_usr[df_usr['user'].astype(str) == str(u_logado)]
         if not u_row.empty: f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
     except: pass
-    src = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-    st.sidebar.markdown(f'<center><img src="{src}" class="avatar-round" width="80" height="80"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
+    src_sidebar = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+    st.sidebar.markdown(f'<center><img src="{src_sidebar}" class="avatar-round" width="80" height="80"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
+    
     menu = st.sidebar.radio("Navegação", ["🏠 Início", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas", "👥 Equipe"])
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
-    # --- 🏠 INÍCIO ---
+    # --- 🏠 INÍCIO / 📦 ESTOQUE / 🏗️ PILARES / 🍶 CASCOS / ✨ CADASTRO ---
+    # (Mantidos conforme v65 para garantir que seus produtos criados não sumam)
     if menu == "🏠 Início":
         st.title("Painel Geral")
         c1, c2, c3 = st.columns(3)
@@ -110,7 +114,6 @@ else:
         except: capital = 0
         c3.metric("Capital em Estoque", f"R$ {capital:,.2f}")
 
-    # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque":
         st.title("📦 Inventário")
         cat_sel = st.selectbox("Categoria", [""] + df_cat['Nome'].tolist())
@@ -134,7 +137,6 @@ else:
                 css = "stock-low" if f < 2 else ""
                 with cols[i % 4]: st.markdown(f'<div class="product-card {css}"><h4>{r["Nome"]}</h4><p style="font-size: 20px;"><b>{f}</b> fds | <b>{a}</b> un</p><hr><p>Total: {total} un</p></div>', unsafe_allow_html=True)
 
-    # --- 🏗️ PILARES ---
     elif menu == "🏗️ Pilares":
         st.title("🏗️ Gestão de Pilares")
         with st.expander("🧱 Nova Camada"):
@@ -165,10 +167,9 @@ else:
                             df_e.to_csv(DB["est"], index=False); df_pil[df_pil['ID'] != r['ID']].to_csv(DB["pil"], index=False); st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- 🍶 CASCOS (COM ESTORNO E LEVAR PRA EMPRESA) ---
     elif menu == "🍶 Cascos":
         st.title("🍶 Vasilhames")
-        t1, t2, t3 = st.tabs(["🔴 Devedores", "📜 Histórico/Estorno", "🚚 Levar p/ Empresa"])
+        t1, t2, t3 = st.tabs(["🔴 Devedores", "📜 Histórico", "🚚 Levar p/ Empresa"])
         with t1:
             with st.form("div"):
                 cli, v, q = st.text_input("Cliente").upper(), st.selectbox("Tipo", ["Romarinho", "600ml", "Coca 1L", "Coca 2L Retornável"]), st.number_input("Qtd", 1)
@@ -179,25 +180,20 @@ else:
                 if c2.button("BAIXA", key=f"bx_{i}"):
                     df_cas.loc[i, 'Status'] = "PAGO"; df_cas.loc[i, 'QuemBaixou'] = n_logado
                     df_cas.to_csv(DB["cas"], index=False); df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] += r['Quantidade']; df_patio.to_csv(DB["patio"], index=False); st.rerun()
-        
         with t2:
-            st.subheader("Últimas Baixas (Possível Estornar)")
             df_hist = df_cas[df_cas['Status'] == "PAGO"].tail(10)
             for i, r in df_hist.iterrows():
                 c1, c2 = st.columns([3, 1]); c1.success(f"✔️ {r['Cliente']} pagou {int(r['Quantidade'])} {r['Vasilhame']}")
                 if c2.button("ESTORNAR", key=f"est_{i}"):
                     df_cas.loc[i, 'Status'] = "DEVE"; df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] -= r['Quantidade']
                     df_cas.to_csv(DB["cas"], index=False); df_patio.to_csv(DB["patio"], index=False); st.rerun()
-        
         with t3:
-            st.subheader("Saída de Caminhão")
             v_saida = st.selectbox("Vasilhame Saindo", df_patio['Vasilhame'].tolist())
             q_saida = st.number_input("Qtd Saindo", 1)
-            if st.button("CONFIRMAR SAÍDA PARA EMPRESA"):
+            if st.button("CONFIRMAR SAÍDA"):
                 df_patio.loc[df_patio['Vasilhame'] == v_saida, 'Total_Vazio'] -= q_saida
-                df_patio.to_csv(DB["patio"], index=False); st.success("Saída registrada!"); st.rerun()
+                df_patio.to_csv(DB["patio"], index=False); st.rerun()
 
-    # --- ✨ CADASTRO (CATEGORIA E PRODUTO) ---
     elif menu == "✨ Cadastro":
         st.title("✨ Gestão de Itens")
         c1, c2 = st.columns(2)
@@ -208,45 +204,74 @@ else:
                 if st.form_submit_button("Salvar Produto"):
                     pd.concat([df_p, pd.DataFrame([[c, n, pr]], columns=COLS["prod"])]).to_csv(DB["prod"], index=False)
                     pd.concat([df_e, pd.DataFrame([[n, 0]], columns=COLS["est"])]).to_csv(DB["est"], index=False); st.rerun()
-            st.divider()
-            st.write("Apagar Produto:")
-            p_del = st.selectbox("Selecionar p/ Apagar", [""] + df_p['Nome'].tolist())
+            p_del = st.selectbox("Apagar Produto", [""] + df_p['Nome'].tolist())
             if p_del and st.button("DELETAR PRODUTO", type="primary"):
-                df_p[df_p['Nome'] != p_del].to_csv(DB["prod"], index=False)
-                df_e[df_e['Nome'] != p_del].to_csv(DB["est"], index=False); st.rerun()
-
+                df_p[df_p['Nome'] != p_del].to_csv(DB["prod"], index=False); df_e[df_e['Nome'] != p_del].to_csv(DB["est"], index=False); st.rerun()
         with c2:
             st.subheader("Categorias")
             new_cat = st.text_input("Nova Categoria").upper()
             if st.button("Criar Categoria"):
                 pd.concat([df_cat, pd.DataFrame([[new_cat]], columns=['Nome'])]).to_csv(DB["cat"], index=False); st.rerun()
-            st.divider()
             cat_del = st.selectbox("Apagar Categoria", [""] + df_cat['Nome'].tolist())
             if cat_del and st.button("DELETAR CATEGORIA"):
                 df_cat[df_cat['Nome'] != cat_del].to_csv(DB["cat"], index=False); st.rerun()
 
-    # --- 📋 TAREFAS ---
     elif menu == "📋 Tarefas":
         st.title("📋 Checklist")
         txt = st.text_input("Nova")
-        if st.button("Adicionar"): pd.concat([df_tar, pd.DataFrame([[f"T{random.randint(0,999)}", txt, "PENDENTE", "DIÁRIA", ""]], columns=COLS["tar"])]).to_csv(DB["tar"], index=False); st.rerun()
+        if st.button("Add"): pd.concat([df_tar, pd.DataFrame([[f"T{random.randint(0,999)}", txt, "PENDENTE", "DIÁRIA", ""]], columns=COLS["tar"])]).to_csv(DB["tar"], index=False); st.rerun()
         for i, r in df_tar[df_tar['Status'] == "PENDENTE"].iterrows():
             if st.button(f"OK: {r['Tarefa']}", key=f"t_{i}"):
                 df_tar.loc[i, 'Status'] = "OK"; df_tar.to_csv(DB["tar"], index=False); st.rerun()
 
-    # --- 👥 EQUIPE ---
+    # --- 👥 EQUIPE (VERSÃO BONITA COM VER LOGIN/SENHA) ---
     elif menu == "👥 Equipe":
-        st.title("👥 Perfil")
-        st.markdown(f'<div class="profile-card"><img src="{src}" width="150" class="avatar-round"><h3>{n_logado}</h3></div>', unsafe_allow_html=True)
-        f = st.file_uploader("Trocar foto", type=['png', 'jpg'])
-        if f and st.button("CONFIRMAR"):
-            img = Image.open(f).convert("RGB"); img.thumbnail((300, 300)); buf = io.BytesIO(); img.save(buf, format="PNG")
+        st.title("👥 Gestão da Equipe")
+        
+        # Seu Perfil
+        st.markdown(f'<div class="profile-card"><img src="{src_sidebar}" width="150" class="avatar-round"><h3>{n_logado}</h3></div>', unsafe_allow_html=True)
+        f_upload = st.file_uploader("Trocar minha foto de perfil", type=['png', 'jpg'])
+        if f_upload and st.button("ATUALIZAR FOTO"):
+            img = Image.open(f_upload).convert("RGB"); img.thumbnail((300, 300)); buf = io.BytesIO(); img.save(buf, format="PNG")
             df_usr.loc[df_usr['user'].astype(str) == str(u_logado), 'foto'] = base64.b64encode(buf.getvalue()).decode()
             df_usr.to_csv(DB["usr"], index=False); st.rerun()
+
         if is_adm:
-            st.divider(); st.subheader("Gerenciar Membros")
-            with st.form("nu"):
-                lu, ln, ls, la = st.text_input("Login"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Admin?", ["NÃO", "SIM"])
-                if st.form_submit_button("Criar Usuário"):
-                    pd.concat([df_usr, pd.DataFrame([[lu, ln, ls, la, ""]], columns=COLS["usr"])]).to_csv(DB["usr"], index=False); st.rerun()
-            st.table(df_usr[['user', 'nome', 'is_admin']])
+            st.divider()
+            st.subheader("🏢 Colaboradores")
+            
+            # Grid de Membros
+            cols_equipe = st.columns(4)
+            for index, row in df_usr.iterrows():
+                f_equipe = row['foto'] if not pd.isna(row['foto']) else ""
+                src_equipe = f"data:image/png;base64,{f_equipe}" if f_equipe else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                
+                with cols_equipe[index % 4]:
+                    st.markdown(f"""
+                    <div class="team-card">
+                        <img src="{src_equipe}" width="80" height="80" class="avatar-team">
+                        <h4>{row['nome']}</h4>
+                        <p style="color: #8b949e;">{ '🛡️ Administrador' if row['is_admin'] == 'SIM' else '👤 Operador' }</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Botões de Ação
+                    c_ver, c_del = st.columns(2)
+                    if c_ver.button("👁️ Info", key=f"ver_{index}"):
+                        st.info(f"**Login:** {row['user']}  \n**Senha:** {row['senha']}")
+                    
+                    if row['user'] != 'admin': # Proteção para não deletar o admin principal
+                        if c_del.button("🗑️ Sair", key=f"del_{index}"):
+                            df_usr.drop(index).to_csv(DB["usr"], index=False)
+                            st.rerun()
+
+            # Adicionar Novo Membro
+            with st.expander("➕ Adicionar Novo Membro"):
+                with st.form("novo_membro"):
+                    lu, ln, ls, la = st.text_input("Login (ex: marcos)"), st.text_input("Nome Completo"), st.text_input("Senha"), st.selectbox("É Administrador?", ["NÃO", "SIM"])
+                    if st.form_submit_button("CADASTRAR MEMBRO"):
+                        if lu and ln and ls:
+                            pd.concat([df_usr, pd.DataFrame([[lu, ln, ls, la, ""]], columns=COLS["usr"])]).to_csv(DB["usr"], index=False)
+                            st.success("Membro cadastrado!")
+                            st.rerun()
+                        else: st.warning("Preencha todos os campos!")
