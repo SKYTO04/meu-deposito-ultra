@@ -7,7 +7,7 @@ from PIL import Image
 import io
 
 # =================================================================
-# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v49)
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v50)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
@@ -33,15 +33,14 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (v49 - ESTRUTURA BLINDADA)
+# 2. BANCO DE DADOS (v50 - BLINDAGEM TOTAL)
 # =================================================================
 DB = {
-    "prod": "p_v49.csv", "est": "e_v49.csv", "pil": "pil_v49.csv",
-    "usr": "u_v49.csv", "cas": "c_v49.csv", "tar": "t_v49.csv", 
-    "cat": "cat_v49.csv", "patio": "pat_v49.csv", "log": "log_v49.csv"
+    "prod": "p_v50.csv", "est": "e_v50.csv", "pil": "pil_v50.csv",
+    "usr": "u_v50.csv", "cas": "c_v50.csv", "tar": "t_v50.csv", 
+    "cat": "cat_v50.csv", "patio": "pat_v50.csv", "log": "log_v50.csv"
 }
 
-# Cabeçalhos fixos para garantir que o erro de 'Status' não ocorra
 COLS = {
     DB["prod"]: ['Categoria', 'Nome', 'Preco_Unitario'],
     DB["est"]: ['Nome', 'Estoque_Total_Un'],
@@ -66,10 +65,9 @@ def safe_read(key):
         return df
     try:
         df = pd.read_csv(path)
-        # Se faltar qualquer coluna (ex: Status), reconstrói o dataframe com as colunas certas
         if not all(c in df.columns for c in cols):
-            new_df = pd.DataFrame(columns=cols)
-            df = pd.concat([new_df, df], join='outer').fillna("")
+            df = pd.DataFrame(columns=cols)
+            if path == DB["usr"]: df = pd.DataFrame([['admin', 'Gerente', '123', 'SIM', '']], columns=cols)
             df.to_csv(path, index=False)
         return df
     except:
@@ -98,17 +96,21 @@ if not st.session_state['autenticado']:
                 match = df_u[df_u['user'].astype(str) == str(u)]
                 if not match.empty and str(match.iloc[0]['senha']) == str(s):
                     st.session_state.update({'autenticado': True, 'u_l': u, 'u_n': match.iloc[0]['nome'], 'u_a': (match.iloc[0]['is_admin']=='SIM')})
-                    registrar_log(u, "Login efetuado.")
+                    registrar_log(u, "Entrou.")
                     st.rerun()
                 else: st.error("Acesso negado.")
 else:
-    # Carregamento de todas as tabelas com safe_read
+    # Carregamento Seguro
     df_p, df_e, df_pil, df_cas, df_usr, df_tar, df_cat, df_patio, df_log = [safe_read(k) for k in DB.keys()]
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
 
-    # --- SIDEBAR ---
-    u_row = df_usr[df_usr['user'] == u_logado]
-    f_b64 = u_row.iloc[0]['foto'] if not u_row.empty and not pd.isna(u_row.iloc[0]['foto']) else ""
+    # --- SIDEBAR (Proteção contra o erro KeyError 'user') ---
+    f_b64 = ""
+    if 'user' in df_usr.columns:
+        u_row = df_usr[df_usr['user'] == u_logado]
+        if not u_row.empty:
+            f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
+    
     src = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.sidebar.markdown(f'<center><img src="{src}" class="avatar-round" width="80" height="80"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
     
@@ -132,16 +134,16 @@ else:
     # --- 📦 ESTOQUE ---
     elif menu == "📦 Estoque":
         st.title("📦 Inventário")
-        cat_sel = st.selectbox("Selecione a Categoria", [""] + df_cat['Nome'].tolist())
+        cat_sel = st.selectbox("Categoria", [""] + df_cat['Nome'].tolist())
         if cat_sel:
             prods_cat = df_p[df_p['Categoria'] == cat_sel]['Nome'].tolist()
             df_f = df_e[df_e['Nome'].isin(prods_cat)]
-            with st.expander("🔄 Movimentação Manual"):
+            with st.expander("🔄 Movimentação"):
                 with st.form("mov"):
                     p, t, q = st.selectbox("Produto", prods_cat), st.radio("Tipo", ["ENTRADA (+)", "SAÍDA (-)"], horizontal=True), st.number_input("Qtd", 1)
                     if st.form_submit_button("Lançar"):
                         df_e.loc[df_e['Nome'] == p, 'Estoque_Total_Un'] += (q if "ENTRADA" in t else -q)
-                        df_e.to_csv(DB["est"], index=False); registrar_log(u_logado, f"Estoque {p}: {t} {q}un"); st.rerun()
+                        df_e.to_csv(DB["est"], index=False); registrar_log(u_logado, f"Estoque {p}: {t} {q}"); st.rerun()
             cols = st.columns(4)
             for i, r in df_f.reset_index().iterrows():
                 with cols[i % 4]: st.markdown(f'<div class="product-card"><h4>{r["Nome"]}</h4><p>Qtd: <b>{int(r["Estoque_Total_Un"])}</b></p></div>', unsafe_allow_html=True)
@@ -174,7 +176,7 @@ else:
                         if st.button(f"BAIXA\n{r['Bebida']}", key=r['ID']):
                             df_e.loc[df_e['Nome']==r['Bebida'], 'Estoque_Total_Un'] -= (12 + r['Avulsos'])
                             df_e.to_csv(DB["est"], index=False)
-                            df_pil[df_pil['ID'] != r['ID']].to_csv(DB["pil"], index=False); registrar_log(u_logado, f"Baixa Pilar {p}: {r['Bebida']}"); st.rerun()
+                            df_pil[df_pil['ID'] != r['ID']].to_csv(DB["pil"], index=False); st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
     # --- 🍶 CASCOS ---
@@ -194,8 +196,7 @@ else:
                     df_cas.at[i, 'Status'] = "PAGO"; df_cas.at[i, 'QuemBaixou'] = n_logado; df_cas.at[i, 'Data'] = agora
                     df_cas.to_csv(DB["cas"], index=False); df_patio.loc[df_patio['Vasilhame'] == r['Vasilhame'], 'Total_Vazio'] += r['Quantidade']; df_patio.to_csv(DB["patio"], index=False); st.rerun()
         with t2:
-            df_hist = df_cas[df_cas['Status']=="PAGO"]
-            for i, r in df_hist.iterrows():
+            for i, r in df_cas[df_cas['Status']=="PAGO"].iterrows():
                 ch1, ch2 = st.columns([3, 1])
                 ch1.write(f"✅ **{r['Data']}** | {r['Cliente']} devolveu {int(r['Quantidade'])} {r['Vasilhame']} (Rec: {r['QuemBaixou']})")
                 if ch2.button("ESTORNAR", key=f"est_{i}"):
@@ -209,8 +210,6 @@ else:
                     if df_patio.at[idx, 'Total_Vazio'] >= v_q:
                         df_patio.at[idx, 'Total_Vazio'] -= v_q; df_patio.to_csv(DB["patio"], index=False)
                         pd.concat([df_cas, pd.DataFrame([[f"T{datetime.now().microsecond}", agora, emp, v_t, v_q, "TROCA", n_logado]], columns=df_cas.columns)]).to_csv(DB["cas"], index=False); st.rerun()
-            st.subheader("📜 Histórico de Saídas")
-            for _, r in df_cas[df_cas['Status']=="TROCA"].iterrows(): st.text(f"🚚 {r['Data']} - {r['Cliente']} levou {int(r['Quantidade'])} {r['Vasilhame']} (Resp: {r['QuemBaixou']})")
 
     # --- ✨ CADASTRO ---
     elif menu == "✨ Cadastro":
