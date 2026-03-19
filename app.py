@@ -7,7 +7,7 @@ from PIL import Image
 import io
 
 # =================================================================
-# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v53)
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v54)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
@@ -33,12 +33,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (v53 - MÉTODO DE FORÇAR COLUNAS)
+# 2. BANCO DE DADOS (v54 - BLINDAGEM TOTAL ANTI-KEYERROR)
 # =================================================================
 DB = {
-    "prod": "p_v53.csv", "est": "e_v53.csv", "pil": "pil_v53.csv",
-    "usr": "u_v53.csv", "cas": "c_v53.csv", "tar": "t_v53.csv", 
-    "cat": "cat_v53.csv", "patio": "pat_v53.csv", "log": "log_v53.csv"
+    "prod": "p_v54.csv", "est": "e_v54.csv", "pil": "pil_v54.csv",
+    "usr": "u_v54.csv", "cas": "c_v54.csv", "tar": "t_v54.csv", 
+    "cat": "cat_v54.csv", "patio": "pat_v54.csv", "log": "log_v54.csv"
 }
 
 COLS = {
@@ -55,36 +55,31 @@ COLS = {
 
 def safe_read(key):
     path = DB[key]
-    expected_cols = COLS[key]
-    
+    c = COLS[key]
     if not os.path.exists(path) or os.stat(path).st_size == 0:
-        df = pd.DataFrame(columns=expected_cols)
-        if key == "patio": df = pd.DataFrame([["Romarinho", 0], ["600ml", 0], ["Coca 1L", 0], ["Coca 2L Retornável", 0]], columns=expected_cols)
-        if key == "usr": df = pd.DataFrame([['admin', 'Gerente', '123', 'SIM', '']], columns=expected_cols)
-        if key == "cat": df = pd.DataFrame([["Romarinho"], ["Cerveja"], ["Refrigerante"]], columns=expected_cols)
+        df = pd.DataFrame(columns=c)
+        if key == "patio": df = pd.DataFrame([["Romarinho", 0], ["600ml", 0], ["Coca 1L", 0], ["Coca 2L Retornável", 0]], columns=c)
+        if key == "usr": df = pd.DataFrame([['admin', 'Gerente', '123', 'SIM', '']], columns=c)
+        if key == "cat": df = pd.DataFrame([["Romarinho"], ["Cerveja"], ["Refrigerante"]], columns=c)
         df.to_csv(path, index=False)
         return df
-    
     try:
         df = pd.read_csv(path)
-        # FORÇA A EXISTÊNCIA DAS COLUNAS: Se faltar, ele cria a coluna vazia
-        for col in expected_cols:
-            if col not in df.columns:
-                df[col] = ""
-        return df[expected_cols] # Garante a ordem e presença exata
+        for col in c:
+            if col not in df.columns: df[col] = ""
+        return df[c]
     except:
-        return pd.DataFrame(columns=expected_cols)
+        return pd.DataFrame(columns=c)
 
 def registrar_log(usuario, acao):
     now = datetime.now().strftime("%d/%m/%y %H:%M")
     try:
         df_l = safe_read("log")
-        new_log = pd.DataFrame([[now, usuario, acao]], columns=COLS["log"])
-        pd.concat([df_l, new_log]).to_csv(DB["log"], index=False)
+        pd.concat([df_l, pd.DataFrame([[now, usuario, acao]], columns=COLS["log"])]).to_csv(DB["log"], index=False)
     except: pass
 
 # =================================================================
-# 3. LOGICA PRINCIPAL
+# 3. LÓGICA DE LOGIN
 # =================================================================
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
 
@@ -92,28 +87,40 @@ if not st.session_state['autenticado']:
     st.markdown("<h1 style='text-align: center; margin-top: 15vh;'>💎 Adega Pacaembu</h1>", unsafe_allow_html=True)
     with st.columns(3)[1]:
         with st.form("login"):
-            u, s = st.text_input("Usuário").strip(), st.text_input("Senha", type="password").strip()
+            u = st.text_input("Usuário").strip()
+            s = st.text_input("Senha", type="password").strip()
             if st.form_submit_button("ACESSAR"):
                 df_u = safe_read("usr")
-                match = df_u[df_u['user'].astype(str) == str(u)]
-                if not match.empty and str(match.iloc[0]['senha']) == str(s):
-                    st.session_state.update({'autenticado': True, 'u_l': u, 'u_n': match.iloc[0]['nome'], 'u_a': (match.iloc[0]['is_admin']=='SIM')})
-                    registrar_log(u, "Entrou.")
-                    st.rerun()
-                else: st.error("Acesso negado.")
+                try:
+                    match = df_u[df_u['user'].astype(str) == str(u)]
+                    if not match.empty and str(match.iloc[0]['senha']) == str(s):
+                        st.session_state.update({'autenticado': True, 'u_l': u, 'u_n': match.iloc[0]['nome'], 'u_a': (match.iloc[0]['is_admin']=='SIM')})
+                        registrar_log(u, "Entrou.")
+                        st.rerun()
+                    else: st.error("Acesso negado.")
+                except: st.error("Erro crítico no banco de usuários. Contate o suporte.")
 else:
-    # Leitura garantida (Se der erro aqui, o safe_read reconstrói)
+    # Carregamento Geral
     df_p, df_e, df_pil, df_cas, df_usr, df_tar, df_cat, df_patio, df_log = [safe_read(k) for k in DB.keys()]
     u_l, n_l, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
 
-    # --- SIDEBAR ---
+    # --- SIDEBAR (PROTEÇÃO ABSOLUTA CONTRA O ERRO NA LINHA 111) ---
     f_b64 = ""
-    u_row = df_usr[df_usr['user'] == u_l]
-    if not u_row.empty: f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
+    try:
+        # Tenta buscar a foto, se a coluna sumir ou der erro, ele pula pro except
+        u_row = df_usr[df_usr['user'] == u_l]
+        if not u_row.empty:
+            f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
+    except Exception as e:
+        # Se der erro de KeyError, o sistema ignora a foto e segue o baile
+        pass
+    
     src = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.sidebar.markdown(f'<center><img src="{src}" class="avatar-round" width="80" height="80"><br><b>{n_l}</b></center>', unsafe_allow_html=True)
     
-    menu = st.sidebar.radio("Navegação", ["🏠 Início", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas", "👥 Equipe"] + (["📜 Log Geral"] if is_adm else []))
+    nav = ["🏠 Início", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas", "👥 Equipe"]
+    if is_adm: nav.append("📜 Log Geral")
+    menu = st.sidebar.radio("Navegação", nav)
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
     # --- 🏠 INÍCIO ---
@@ -121,11 +128,18 @@ else:
         st.title("Painel Geral")
         c1, c2, c3 = st.columns(3)
         c1.metric("Vazios no Pátio", f"{int(df_patio['Total_Vazio'].sum())} un")
-        c2.metric("Dívidas Ativas", len(df_cas[df_cas['Status'] == "DEVE"]))
+        
+        # Proteção na métrica de dívidas
+        try: d_at = len(df_cas[df_cas['Status'] == "DEVE"])
+        except: d_at = 0
+        c2.metric("Dívidas Ativas", f"{d_at} un")
+        
         cap = 0
         if is_adm and not df_e.empty and not df_p.empty:
-            df_v = pd.merge(df_e, df_p, on="Nome")
-            cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
+            try:
+                df_v = pd.merge(df_e, df_p, on="Nome")
+                cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
+            except: pass
         c3.metric("Capital Estoque", f"R$ {cap:,.2f}")
 
     # --- 📦 ESTOQUE ---
@@ -256,9 +270,10 @@ else:
                 lu, ln, ls, la = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Admin?", ["NÃO", "SIM"])
                 if st.form_submit_button("Cadastrar"):
                     pd.concat([df_usr, pd.DataFrame([[lu, ln, ls, la, ""]], columns=COLS["usr"])]).to_csv(DB["usr"], index=False); st.rerun()
-            st.table(df_usr[['user', 'nome', 'is_admin']])
+            try: st.table(df_usr[['user', 'nome', 'is_admin']])
+            except: st.warning("Não foi possível carregar a lista de membros.")
 
     # --- 📜 LOG GERAL ---
-    elif menu == "📜 Log Geral":
+    elif menu == "📜 Log Geral" and is_adm:
         st.title("📜 Log de Atividades")
         st.dataframe(df_log.sort_values(by="DataHora", ascending=False), use_container_width=True)
