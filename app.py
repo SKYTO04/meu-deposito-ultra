@@ -7,7 +7,7 @@ from PIL import Image
 import io
 
 # =================================================================
-# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v51)
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v52)
 # =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
@@ -33,12 +33,12 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. BANCO DE DADOS (v51 - BLINDAGEM CONTRA KEYERROR)
+# 2. BANCO DE DADOS (v52 - BLINDAGEM TOTAL DE COLUNAS)
 # =================================================================
 DB = {
-    "prod": "p_v51.csv", "est": "e_v51.csv", "pil": "pil_v51.csv",
-    "usr": "u_v51.csv", "cas": "c_v51.csv", "tar": "t_v51.csv", 
-    "cat": "cat_v51.csv", "patio": "pat_v51.csv", "log": "log_v51.csv"
+    "prod": "p_v52.csv", "est": "e_v52.csv", "pil": "pil_v52.csv",
+    "usr": "u_v52.csv", "cas": "c_v52.csv", "tar": "t_v52.csv", 
+    "cat": "cat_v52.csv", "patio": "pat_v52.csv", "log": "log_v52.csv"
 }
 
 COLS = {
@@ -56,6 +56,7 @@ COLS = {
 def safe_read(key):
     path = DB[key]
     cols = COLS[path]
+    # Se o arquivo não existe ou está zerado, cria do zero com colunas certas
     if not os.path.exists(path) or os.stat(path).st_size == 0:
         df = pd.DataFrame(columns=cols)
         if path == DB["patio"]: df = pd.DataFrame([["Romarinho", 0], ["600ml", 0], ["Coca 1L", 0], ["Coca 2L Retornável", 0]], columns=cols)
@@ -65,7 +66,7 @@ def safe_read(key):
         return df
     try:
         df = pd.read_csv(path)
-        # Se as colunas estiverem erradas, ele reseta o arquivo para o padrão correto
+        # Se as colunas obrigatórias sumiram, reseta o arquivo na hora
         if not all(c in df.columns for c in cols):
             df = pd.DataFrame(columns=cols)
             if path == DB["usr"]: df = pd.DataFrame([['admin', 'Gerente', '123', 'SIM', '']], columns=cols)
@@ -82,7 +83,7 @@ def registrar_log(usuario, acao):
     except: pass
 
 # =================================================================
-# 3. CONTROLE DE ACESSO
+# 3. ACESSO E LOGIN
 # =================================================================
 if 'autenticado' not in st.session_state: st.session_state['autenticado'] = False
 
@@ -100,6 +101,7 @@ if not st.session_state['autenticado']:
                     st.rerun()
                 else: st.error("Acesso negado.")
 else:
+    # Carregamento Seguro das Tabelas
     df_p, df_e, df_pil, df_cas, df_usr, df_tar, df_cat, df_patio, df_log = [safe_read(k) for k in DB.keys()]
     u_logado, n_logado, is_adm = st.session_state['u_l'], st.session_state['u_n'], st.session_state['u_a']
 
@@ -118,26 +120,21 @@ else:
     menu = st.sidebar.radio("Navegação", nav)
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
-    # --- 🏠 INÍCIO (BLINDAGEM DA LINHA 127) ---
+    # --- 🏠 INÍCIO ---
     if menu == "🏠 Início":
         st.title("Painel Geral")
         c1, c2, c3 = st.columns(3)
         c1.metric("Vazios no Pátio", f"{int(df_patio['Total_Vazio'].sum())} un")
         
-        # SOLUÇÃO PARA O ERRO DA LINHA 127
-        div_ativas = 0
-        try:
-            if 'Status' in df_cas.columns:
-                div_ativas = len(df_cas[df_cas['Status'] == "DEVE"])
-        except: pass
-        c2.metric("Dívidas Ativas", f"{div_ativas} clientes")
+        div_at = 0
+        if 'Status' in df_cas.columns:
+            div_at = len(df_cas[df_cas['Status'] == "DEVE"])
+        c2.metric("Dívidas Ativas", f"{div_at} clientes")
         
         cap = 0
-        try:
-            if is_adm and not df_e.empty and not df_p.empty:
-                df_v = pd.merge(df_e, df_p, on="Nome")
-                cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
-        except: pass
+        if is_adm and not df_e.empty and not df_p.empty:
+            df_v = pd.merge(df_e, df_p, on="Nome")
+            cap = (df_v['Estoque_Total_Un'] * df_v['Preco_Unitario']).sum()
         c3.metric("Capital Estoque", f"R$ {cap:,.2f}")
 
     # --- 📦 ESTOQUE ---
@@ -253,7 +250,7 @@ else:
         for i, r in df_tar[df_tar['Status'] == "PENDENTE"].iterrows():
             if st.button(f"OK: {r['Tarefa']}", key=f"t_{i}"): df_tar.at[i, 'Status'] = "OK"; df_tar.to_csv(DB["tar"], index=False); st.rerun()
 
-    # --- 👥 EQUIPE ---
+    # --- 👥 EQUIPE (ARRUMADO COM PROTEÇÃO DE COLUNAS) ---
     elif menu == "👥 Equipe":
         st.title("👥 Perfil e Equipe")
         st.markdown(f'<div class="profile-card"><img src="{src}" width="150" class="avatar-round"><h3>{n_logado}</h3></div>', unsafe_allow_html=True)
@@ -268,7 +265,12 @@ else:
                 lu, ln, ls, la = st.text_input("User"), st.text_input("Nome"), st.text_input("Senha"), st.selectbox("Admin?", ["NÃO", "SIM"])
                 if st.form_submit_button("Cadastrar"):
                     pd.concat([df_usr, pd.DataFrame([[lu, ln, ls, la, ""]], columns=df_usr.columns)]).to_csv(DB["usr"], index=False); st.rerun()
-            st.table(df_usr[['user', 'nome', 'is_admin']])
+            
+            # PROTEÇÃO EXTRA PARA A EXIBIÇÃO DA TABELA (LINHA DO ERRO)
+            if all(c in df_usr.columns for c in ['user', 'nome', 'is_admin']):
+                st.table(df_usr[['user', 'nome', 'is_admin']])
+            else:
+                st.error("Erro na base de dados de usuários. Tente sair e entrar novamente.")
 
     # --- 📜 LOG GERAL ---
     elif menu == "📜 Log Geral" and is_adm:
