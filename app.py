@@ -1,5 +1,4 @@
 import streamlit as st
-import pd as pd
 import pandas as pd
 from datetime import datetime
 import os
