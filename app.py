@@ -239,10 +239,63 @@ else:
             if st.button(f"OK: {r['Tarefa']}", key=f"tk_{i}"):
                 df_tar.loc[i, 'Status'] = "OK"; df_tar.to_csv(DB["tar"], index=False); st.rerun()
 
-    # --- 👥 EQUIPE ---
+    # --- 👥 EQUIPE (ADICIONAR MEMBROS E CARDS COM FOTO) ---
     elif menu == "👥 Equipe":
-        st.title("👥 Equipe")
-        st.markdown(f'<div class="profile-card"><img src="{src_side}" width="150" class="avatar-round"><h3>{n_logado}</h3></div>', unsafe_allow_html=True)
+        st.title("👥 Gestão da Equipe")
+        
+        # Perfil do Usuário Logado
+        st.markdown(f'<div class="profile-card"><img src="{src_side}" width="150" class="avatar-round"><h3>{n_logado}</h3><p>Usuário: {u_logado}</p></div>', unsafe_allow_html=True)
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("Alterar Minha Foto")
+            f_up = st.file_uploader("Escolha uma foto", type=['png', 'jpg', 'jpeg'], key="up_perfil")
+            if f_up and st.button("ATUALIZAR FOTO"):
+                img = Image.open(f_up).convert("RGB")
+                img.thumbnail((300, 300))
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                df_usr.loc[df_usr['user'].astype(str) == str(u_logado), 'foto'] = base64.b64encode(buf.getvalue()).decode()
+                df_usr.to_csv(DB["usr"], index=False)
+                st.success("Foto atualizada!")
+                st.rerun()
+
         if is_adm:
-            st.write("Dados de Acesso:")
-            st.dataframe(df_usr[['nome', 'user', 'senha']])
+            with c2:
+                st.subheader("Novo Membro")
+                with st.form("novo_user"):
+                    new_n = st.text_input("Nome Completo")
+                    new_u = st.text_input("Usuário (Login)")
+                    new_s = st.text_input("Senha")
+                    new_a = st.checkbox("É Admin?")
+                    if st.form_submit_button("CADASTRAR"):
+                        if new_u and new_s:
+                            adm_str = "SIM" if new_a else "NÃO"
+                            novo_df = pd.DataFrame([[new_u, new_n, new_s, adm_str, ""]], columns=COLS["usr"])
+                            pd.concat([df_usr, novo_df]).to_csv(DB["usr"], index=False)
+                            st.success("Membro adicionado!")
+                            st.rerun()
+            
+            st.divider()
+            st.subheader("Membros do Time")
+            cols_e = st.columns(4)
+            for idx, row in df_usr.iterrows():
+                f_e = row['foto'] if not pd.isna(row['foto']) and row['foto'] != "" else ""
+                s_e = f"data:image/png;base64,{f_e}" if f_e else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                with cols_e[idx % 4]:
+                    st.markdown(f"""
+                        <div class="team-card">
+                            <img src="{s_e}" width="80" height="80" class="avatar-team">
+                            <h5 style="margin: 10px 0;">{row['nome']}</h5>
+                            <p style="font-size: 12px; color: #8b949e;">@{row['user']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    col_b1, col_b2 = st.columns(2)
+                    if col_b1.button("👁️", key=f"v_{idx}", help="Ver Senha"):
+                        st.info(f"Senha: {row['senha']}")
+                    if col_b2.button("🗑️", key=f"d_{idx}", help="Remover"):
+                        if row['user'] != u_logado:
+                            df_usr.drop(idx).to_csv(DB["usr"], index=False)
+                            st.rerun()
+                        else:
+                            st.error("Não pode se auto-excluir")
