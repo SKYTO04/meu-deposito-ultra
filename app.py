@@ -26,8 +26,19 @@ st.markdown("""
         background: #1c2128; border: 1px solid #30363d; border-radius: 20px;
         padding: 30px; text-align: center; border-bottom: 4px solid #58a6ff;
     }
-    .avatar-round { border-radius: 50%; border: 4px solid #58a6ff; object-fit: cover; margin-bottom: 15px; }
-    .avatar-team { border-radius: 50%; border: 2px solid #ab7ffb; object-fit: cover; margin-bottom: 10px; }
+    /* Estilo para fotos perfeitamente redondas */
+    .avatar-round { 
+        border-radius: 50%; border: 4px solid #58a6ff; 
+        object-fit: cover; width: 150px; height: 150px; margin-bottom: 15px; 
+    }
+    .avatar-team { 
+        border-radius: 50%; border: 2px solid #ab7ffb; 
+        object-fit: cover; width: 80px; height: 80px; margin-bottom: 10px; 
+    }
+    .avatar-sidebar {
+        border-radius: 50%; border: 2px solid #58a6ff;
+        object-fit: cover; width: 80px; height: 80px; margin-bottom: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -99,7 +110,7 @@ else:
         if not u_row.empty: f_b64 = u_row.iloc[0]['foto'] if not pd.isna(u_row.iloc[0]['foto']) else ""
     except: pass
     src_side = f"data:image/png;base64,{f_b64}" if f_b64 else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-    st.sidebar.markdown(f'<center><img src="{src_side}" class="avatar-round" width="80" height="80"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
+    st.sidebar.markdown(f'<center><img src="{src_side}" class="avatar-sidebar"><br><b>{n_logado}</b></center>', unsafe_allow_html=True)
     menu = st.sidebar.radio("Navegação", ["🏠 Início", "📦 Estoque", "🏗️ Pilares", "🍶 Cascos", "✨ Cadastro", "📋 Tarefas", "👥 Equipe"])
     if st.sidebar.button("SAIR"): st.session_state['autenticado'] = False; st.rerun()
 
@@ -142,17 +153,14 @@ else:
                 with cols[i % 4]:
                     st.markdown(f'<div class="product-card {css}"><h4>{r["Nome"]}</h4><p style="font-size: 18px;"><b>{f}</b> fds | <b>{a}</b> un</p><p style="font-size: 11px; color: gray;">Config: {un_fardo}un/fardo</p><hr><p>Total: {total} un</p></div>', unsafe_allow_html=True)
 
-    # --- 🏗️ PILARES (ALTERAÇÃO PEDIDA: AMARRAÇÃO) ---
+    # --- 🏗️ PILARES ---
     elif menu == "🏗️ Pilares":
         st.title("🏗️ Gestão de Pilares")
         with st.expander("🧱 Nova Camada"):
             p_sel = st.selectbox("Pilar", ["Pilar A", "Pilar B", "Pilar C", "Pilar D", "Pilar E"])
             cam_at = int(df_pil[df_pil['NomePilar']==p_sel]['Camada'].max() + 1 if not df_pil[df_pil['NomePilar']==p_sel].empty else 1)
-            
-            # Lógica de amarração: alterna entre 3-2 e 2-3
             frent, atrav = (3, 2) if cam_at % 2 != 0 else (2, 3)
             st.info(f"Camada {cam_at}: {'3 na Frente / 2 Atrás' if cam_at % 2 != 0 else '2 na Frente / 3 Atrás (Amarração)'}")
-            
             prods = ["Vazio"] + df_p['Nome'].tolist()
             c_data = []
             col_f, col_t = st.columns(2)
@@ -168,7 +176,6 @@ else:
                     b = st.selectbox(f"Bebida T{i+1}", prods, key=f"t_{i}")
                     av = st.number_input(f"Av T{i+1}", 0, key=f"at_{i}")
                     if b != "Vazio": c_data.append([f"P_{random.randint(0,99999)}", p_sel, cam_at, f"T{i+1}", b, av])
-            
             if st.button("SALVAR CAMADA"):
                 pd.concat([df_pil, pd.DataFrame(c_data, columns=COLS["pil"])]).to_csv(DB["pil"], index=False); st.rerun()
         
@@ -197,9 +204,6 @@ else:
                 if st.form_submit_button("Salvar Produto"):
                     pd.concat([df_p, pd.DataFrame([[c, n, pr]], columns=COLS["prod"])]).to_csv(DB["prod"], index=False)
                     pd.concat([df_e, pd.DataFrame([[n, 0]], columns=COLS["est"])]).to_csv(DB["est"], index=False); st.rerun()
-            p_del = st.selectbox("Apagar Produto", [""] + df_p['Nome'].tolist())
-            if p_del and st.button("DELETAR PRODUTO", type="primary"):
-                df_p[df_p['Nome'] != p_del].to_csv(DB["prod"], index=False); df_e[df_e['Nome'] != p_del].to_csv(DB["est"], index=False); st.rerun()
         with c2:
             st.subheader("Categorias")
             with st.form("cc"):
@@ -209,7 +213,7 @@ else:
                     pd.concat([df_cat, pd.DataFrame([[new_cat, un_cat]], columns=COLS["cat"])]).to_csv(DB["cat"], index=False); st.rerun()
             st.divider(); st.write("Configuração Atual:"); st.dataframe(df_cat, use_container_width=True)
 
-    # --- 🍶 CASCOS (ALTERAÇÃO PEDIDA: HISTÓRICO) ---
+    # --- 🍶 CASCOS ---
     elif menu == "🍶 Cascos":
         st.title("🍶 Cascos")
         t1, t2 = st.tabs(["🔴 Devedores", "📜 Histórico de Pagos"])
@@ -239,63 +243,31 @@ else:
             if st.button(f"OK: {r['Tarefa']}", key=f"tk_{i}"):
                 df_tar.loc[i, 'Status'] = "OK"; df_tar.to_csv(DB["tar"], index=False); st.rerun()
 
-    # --- 👥 EQUIPE (ADICIONAR MEMBROS E CARDS COM FOTO) ---
+    # --- 👥 EQUIPE ---
     elif menu == "👥 Equipe":
         st.title("👥 Gestão da Equipe")
-        
-        # Perfil do Usuário Logado
-        st.markdown(f'<div class="profile-card"><img src="{src_side}" width="150" class="avatar-round"><h3>{n_logado}</h3><p>Usuário: {u_logado}</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="profile-card"><img src="{src_side}" class="avatar-round"><h3>{n_logado}</h3></div>', unsafe_allow_html=True)
         
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("Alterar Minha Foto")
-            f_up = st.file_uploader("Escolha uma foto", type=['png', 'jpg', 'jpeg'], key="up_perfil")
-            if f_up and st.button("ATUALIZAR FOTO"):
-                img = Image.open(f_up).convert("RGB")
-                img.thumbnail((300, 300))
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
+            st.subheader("Minha Foto")
+            f_up = st.file_uploader("Trocar foto", type=['png', 'jpg', 'jpeg'])
+            if f_up and st.button("CONFIRMAR FOTO"):
+                img = Image.open(f_up).convert("RGB"); img.thumbnail((300, 300)); buf = io.BytesIO(); img.save(buf, format="PNG")
                 df_usr.loc[df_usr['user'].astype(str) == str(u_logado), 'foto'] = base64.b64encode(buf.getvalue()).decode()
-                df_usr.to_csv(DB["usr"], index=False)
-                st.success("Foto atualizada!")
-                st.rerun()
-
+                df_usr.to_csv(DB["usr"], index=False); st.success("Foto salva!"); st.rerun()
         if is_adm:
             with c2:
                 st.subheader("Novo Membro")
-                with st.form("novo_user"):
-                    new_n = st.text_input("Nome Completo")
-                    new_u = st.text_input("Usuário (Login)")
-                    new_s = st.text_input("Senha")
-                    new_a = st.checkbox("É Admin?")
-                    if st.form_submit_button("CADASTRAR"):
-                        if new_u and new_s:
-                            adm_str = "SIM" if new_a else "NÃO"
-                            novo_df = pd.DataFrame([[new_u, new_n, new_s, adm_str, ""]], columns=COLS["usr"])
-                            pd.concat([df_usr, novo_df]).to_csv(DB["usr"], index=False)
-                            st.success("Membro adicionado!")
-                            st.rerun()
-            
-            st.divider()
-            st.subheader("Membros do Time")
-            cols_e = st.columns(4)
+                with st.form("nu"):
+                    nu, nn, ns, na = st.text_input("Login"), st.text_input("Nome"), st.text_input("Senha"), st.checkbox("Admin?")
+                    if st.form_submit_button("Cadastrar"):
+                        pd.concat([df_usr, pd.DataFrame([[nu, nn, ns, ("SIM" if na else "NÃO"), ""]], columns=COLS["usr"])]).to_csv(DB["usr"], index=False); st.rerun()
+            st.divider(); cols_e = st.columns(4)
             for idx, row in df_usr.iterrows():
                 f_e = row['foto'] if not pd.isna(row['foto']) and row['foto'] != "" else ""
                 s_e = f"data:image/png;base64,{f_e}" if f_e else "https://cdn-icons-png.flaticon.com/512/149/149071.png"
                 with cols_e[idx % 4]:
-                    st.markdown(f"""
-                        <div class="team-card">
-                            <img src="{s_e}" width="80" height="80" class="avatar-team">
-                            <h5 style="margin: 10px 0;">{row['nome']}</h5>
-                            <p style="font-size: 12px; color: #8b949e;">@{row['user']}</p>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    col_b1, col_b2 = st.columns(2)
-                    if col_b1.button("👁️", key=f"v_{idx}", help="Ver Senha"):
-                        st.info(f"Senha: {row['senha']}")
-                    if col_b2.button("🗑️", key=f"d_{idx}", help="Remover"):
-                        if row['user'] != u_logado:
-                            df_usr.drop(idx).to_csv(DB["usr"], index=False)
-                            st.rerun()
-                        else:
-                            st.error("Não pode se auto-excluir")
+                    st.markdown(f'<div class="team-card"><img src="{s_e}" class="avatar-team"><h6>{row["nome"]}</h6><p style="font-size:10px;">@{row["user"]}</p></div>', unsafe_allow_html=True)
+                    if st.button("🗑️", key=f"del_{idx}"):
+                        if row['user'] != u_logado: df_usr.drop(idx).to_csv(DB["usr"], index=False); st.rerun()
