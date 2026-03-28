@@ -10,6 +10,9 @@ import random
 # =================================================================
 # 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v67)
 # =================================================================
+# =================================================================
+# 1. ESTILO E CONFIGURAÇÃO (VISUAL PRESTIGE v67)
+# =================================================================
 st.set_page_config(page_title="Adega Pacaembu - Sistema Integral", page_icon="💎", layout="wide")
 
 st.markdown("""
@@ -21,23 +24,37 @@ st.markdown("""
         border-radius: 12px; padding: 20px; margin-bottom: 15px;
         border-top: 5px solid #58a6ff; text-align: center;
     }
-    .stock-low { border: 2px solid #ff4b4b !important; border-top: 5px solid #ff4b4b !important; }
     .profile-card {
         background: #1c2128; border: 1px solid #30363d; border-radius: 20px;
         padding: 30px; text-align: center; border-bottom: 4px solid #58a6ff;
     }
-    /* Estilo para fotos perfeitamente redondas */
+
+    /* FIX: FOTOS PERFEITAMENTE REDONDAS SEM DISTORÇÃO */
+    .avatar-round, .avatar-team, .avatar-sidebar {
+        border-radius: 50% !important;
+        object-fit: cover !important;
+        aspect-ratio: 1 / 1 !important; /* Força ser um quadrado perfeito antes de arredondar */
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
     .avatar-round { 
-        border-radius: 50%; border: 4px solid #58a6ff; 
-        object-fit: cover; width: 150px; height: 150px; margin-bottom: 15px; 
+        width: 150px !important; 
+        height: 150px !important; 
+        border: 4px solid #58a6ff;
     }
+
     .avatar-team { 
-        border-radius: 50%; border: 2px solid #ab7ffb; 
-        object-fit: cover; width: 80px; height: 80px; margin-bottom: 10px; 
+        width: 80px !important; 
+        height: 80px !important; 
+        border: 2px solid #ab7ffb;
     }
+
     .avatar-sidebar {
-        border-radius: 50%; border: 2px solid #58a6ff;
-        object-fit: cover; width: 80px; height: 80px; margin-bottom: 10px;
+        width: 80px !important; 
+        height: 80px !important; 
+        border: 2px solid #58a6ff;
     }
     </style>
     """, unsafe_allow_html=True)
